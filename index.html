@@ -1,0 +1,2653 @@
+<!doctype html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pivvy</title>
+<!--
+  LA PAGE DES INVITES — VERSION RELAIS (4G).
+
+  Son jumeau Wi-Fi vit dans `lib/core/party_server.dart` : meme allure, meme
+  ecrans, meme protocole. Ce qui change est le TUYAU, et lui seul. En Wi-Fi
+  le telephone maitre sert lui-meme cette page et repond en HTTP ; ici il n'y
+  a plus de serveur a interroger, on parle au canal de diffusion Supabase.
+
+  A GARDER EN TETE EN LA MODIFIANT : le telephone maitre est l'autorite. Cette
+  page n'envoie que des INTENTIONS (« je suis Lea », « ajoute-moi ») et
+  n'affiche que l'ETAT qu'on lui rediffuse. Elle ne decide de rien, ne garde
+  rien, et un rechargement ne perd donc rien.
+
+  L'enveloppe des messages doit rester identique a celle de `PartyMessage`
+  (`lib/core/transport.dart`), au caractere pres. `tools/relay_page_check.js`
+  le verifie — sans quoi les deux cotes se parleraient dans le vide, en
+  silence et sans la moindre erreur.
+-->
+<style>
+  :root{--bg1:#0A1436;--bg2:#16409B;--bg3:#050B22;--accent:#6C9BFF;}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;min-height:100vh;font:16px/1.45 -apple-system,BlinkMacSystemFont,
+       "Segoe UI",Roboto,sans-serif;color:#fff;
+       background:linear-gradient(160deg,var(--bg1),var(--bg2) 55%,var(--bg3));
+       background-attachment:fixed;padding:22px 18px 40px}
+  h1{font-size:26px;margin:6px 0 2px;font-weight:800;letter-spacing:.5px}
+  .sub{opacity:.6;font-size:13px;margin-bottom:22px}
+  .card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
+        border-radius:18px;padding:16px;margin-bottom:12px}
+  .lbl{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;
+       opacity:.55;font-weight:700;margin-bottom:10px}
+  button{font:inherit;color:#fff;background:rgba(255,255,255,.10);border:0;
+         border-radius:14px;padding:14px 16px;width:100%;text-align:left;
+         margin-bottom:8px;display:flex;align-items:center;gap:10px}
+  button:active{background:rgba(255,255,255,.20)}
+  button.primary{background:var(--accent);color:#08102a;font-weight:800;
+                 justify-content:center;text-align:center}
+  .dot{width:9px;height:9px;border-radius:50%;background:#4FD68A;flex:0 0 auto}
+  .taken{opacity:.45}
+  input{font:inherit;width:100%;padding:14px;border-radius:14px;border:0;
+        background:rgba(255,255,255,.12);color:#fff;margin-bottom:10px}
+  input::placeholder{color:rgba(255,255,255,.45)}
+  .me{background:rgba(79,214,138,.16);border:1px solid rgba(79,214,138,.55)}
+  .banner{background:rgba(255,154,61,.18);border:1px solid rgba(255,154,61,.6);
+          border-radius:16px;padding:14px;margin-bottom:12px;font-weight:600}
+  .themes{display:flex;gap:8px;flex-wrap:wrap}
+  .themes button{width:auto;padding:9px 14px;border-radius:999px;margin:0}
+  .err{color:#FF8A8A;font-size:13px;margin-bottom:10px}
+  .foot{opacity:.4;font-size:11px;text-align:center;margin-top:26px}
+  .turn{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+  .who{font-size:20px;font-weight:800}
+  .clock{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;
+         opacity:.85}
+  .gauge{height:6px;border-radius:99px;background:rgba(255,255,255,.14);
+         margin:12px 0 10px;overflow:hidden}
+  .gauge .fill{height:100%;background:var(--accent);border-radius:99px;
+               transition:width .25s linear}
+  .hint{font-size:13px;opacity:.65}
+  /* L'ARDOISE PREND TOUTE LA LARGEUR : c'est la raison d'etre de cet ecran.
+     Un fond sombre et uni, comme sur le telephone maitre — les traits clairs
+     y sont lisibles, et un fond transparent laisserait le degrade de la page
+     passer a travers la gomme. */
+  .slate{background:#0D1122;border:1px solid rgba(255,255,255,.14);
+         border-radius:18px;overflow:hidden;margin-bottom:12px;line-height:0}
+  .board{width:100%;display:block}
+  .big{font-size:30px;font-weight:800;letter-spacing:.5px;margin:6px 0 10px;
+       word-break:break-word}
+  .secret{background:rgba(108,155,255,.14);border-color:rgba(108,155,255,.5)}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+       padding:9px 0;border-bottom:1px solid rgba(255,255,255,.08)}
+  .row:last-child{border-bottom:0}
+  .nom{font-weight:700}
+  .pts{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;
+       flex:0 0 auto}
+  .dice{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+  /* UN DE SE DESSINE EN POINTS, en trois colonnes de trois. On reconnait un
+     cinq sans le lire, ce qu'un chiffre ne permet pas. */
+  .de{width:54px;height:54px;border-radius:12px;background:#fff;
+      display:grid;grid-template-columns:repeat(3,1fr);
+      grid-template-rows:repeat(3,1fr);padding:7px;gap:2px}
+  .de .pip{width:9px;height:9px;border-radius:50%;background:transparent;
+           place-self:center}
+  .de .pip.on{background:#12182b}
+  .de.chiffre{display:flex;align-items:center;justify-content:center;
+              color:#12182b;font-size:24px;font-weight:800}
+
+  /* LA MESSAGERIE. Transparente sur le jeu : on doit continuer a voir ce qui
+     se passe derriere, sinon on ferme la fenetre a chaque fois qu'il se
+     passe quelque chose — c'est-a-dire tout le temps. */
+  /* `display:flex` GAGNE CONTRE `hidden` — c'est la regle CSS, pas un bug du
+     navigateur — et un panneau « cache » qui reste en place intercepte tous
+     les clics de la page derriere lui. */
+  [hidden]{display:none !important}
+  /* L'APLAT DU CLIGNOTEMENT. `pointer-events:none` est indispensable : sans
+     lui, il avalerait le clic qui arrive pendant qu'il s'efface. */
+  #flash{position:fixed;inset:0;z-index:50;pointer-events:none;opacity:0;
+         transition:opacity .12s linear}
+  #bulle{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));
+         width:52px;height:52px;border-radius:50%;padding:0;margin:0;
+         display:flex;align-items:center;justify-content:center;font-size:22px;
+         background:rgba(255,255,255,.16);backdrop-filter:blur(8px);
+         border:1px solid rgba(255,255,255,.22);z-index:20}
+  #pastille{position:absolute;top:6px;right:6px;width:11px;height:11px;
+            border-radius:50%;background:#FF6B6B;border:2px solid rgba(10,20,54,.8)}
+  #cartes{position:fixed;right:14px;
+          bottom:calc(76px + env(safe-area-inset-bottom));
+          width:52px;height:52px;border-radius:50%;padding:0;margin:0;
+          display:flex;align-items:center;justify-content:center;font-size:22px;
+          background:rgba(255,255,255,.16);backdrop-filter:blur(8px);
+          border:1px solid rgba(255,255,255,.22);z-index:20}
+  #pastilleC{position:absolute;top:6px;right:6px;min-width:18px;height:18px;
+             border-radius:9px;background:var(--accent);color:#08102a;
+             font-size:11px;font-weight:800;font-style:normal;line-height:18px;
+             text-align:center;padding:0 4px}
+  #jeu{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+       background:rgba(6,12,32,.72);backdrop-filter:blur(10px);
+       padding:calc(10px + env(safe-area-inset-top)) 14px
+               calc(10px + env(safe-area-inset-bottom))}
+  #jeu .barre{display:flex;align-items:center;gap:12px;font-weight:800;
+              font-size:17px;margin-bottom:10px;flex:0 0 auto}
+  #jeu .rond{width:42px;height:42px;border-radius:50%;padding:0;margin:0;
+             flex:0 0 auto;display:flex;align-items:center;
+             justify-content:center;font-size:19px}
+  #mainC{flex:1 1 auto;overflow-y:auto;padding:4px 0}
+  .carte{display:flex;gap:12px;align-items:flex-start;text-align:left;
+         background:rgba(255,255,255,.10);border-radius:16px;padding:14px;
+         margin-bottom:10px;width:100%;border-left:4px solid var(--accent)}
+  .carte .em{font-size:28px;flex:0 0 auto;line-height:1.1}
+  .carte .nom{font-weight:800;font-size:16px;margin-bottom:3px}
+  .carte .eff{font-size:13px;opacity:.7;line-height:1.35}
+  #tchat{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+         background:rgba(6,12,32,.72);backdrop-filter:blur(10px);
+         padding:calc(10px + env(safe-area-inset-top)) 14px
+                 calc(10px + env(safe-area-inset-bottom))}
+  #tchat .barre{display:flex;align-items:center;gap:12px;font-weight:800;
+                font-size:17px;margin-bottom:10px;flex:0 0 auto}
+  #tchat .rond{width:42px;height:42px;border-radius:50%;padding:0;margin:0;
+               flex:0 0 auto;display:flex;align-items:center;
+               justify-content:center;font-size:19px}
+  #lignes{flex:1 1 auto;overflow-y:auto;display:flex;flex-direction:column;
+          gap:8px;padding:4px 0}
+  #lignes .msg{background:rgba(255,255,255,.10);border-radius:14px;
+               padding:9px 12px;font-size:15px;line-height:1.35;
+               word-break:break-word}
+  #lignes .msg b{font-weight:800;margin-right:6px}
+  #lignes .vide{opacity:.5;font-size:13px;text-align:center;margin-top:20px}
+  .saisie{display:flex;gap:8px;align-items:center;flex:0 0 auto;padding-top:8px}
+  .saisie input{margin:0}
+  /* L'ENGRENAGE SUIT LE TITRE plutot que de flotter dans un coin. Pose en
+     absolu il chevauchait le haut de l'ecran sur les telephones a encoche,
+     et il ne se rattachait visuellement a rien. */
+  .titre{display:flex;align-items:center;justify-content:center;gap:10px}
+  .titre h1{margin:0}
+  .titre button{width:34px;height:34px;border-radius:50%;border:0;
+                background:rgba(255,255,255,.10);color:#fff;font-size:16px;
+                line-height:1;padding:0;cursor:pointer;flex:0 0 auto}
+  #form{position:fixed;inset:0;z-index:32;display:flex;flex-direction:column;
+        background:rgba(6,12,32,.94);backdrop-filter:blur(10px);overflow:auto;
+        padding:calc(10px + env(safe-area-inset-top)) 14px
+                calc(10px + env(safe-area-inset-bottom))}
+  #form .barre{display:flex;align-items:center;gap:12px;font-weight:800;
+               margin-bottom:12px}
+  #form .chrono{font-size:34px;font-weight:900;text-align:center;margin:4px 0}
+  canvas.croquis{width:100%;display:block;touch-action:none}
+  .outils{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
+  .pot{width:30px;height:30px;border-radius:50%;border:2px solid transparent;
+       padding:0;cursor:pointer}
+  .pot.actif{border-color:#fff}
+  .outil{width:34px;height:30px;border-radius:9px;border:0;padding:0;
+         background:rgba(255,255,255,.12);color:#fff;font-size:15px;
+         cursor:pointer;margin-left:auto}
+  .outil + .outil{margin-left:0}
+  #form .chrono.court{color:#FF6B6B}
+  #param{position:fixed;inset:0;z-index:31;display:flex;flex-direction:column;
+         background:rgba(6,12,32,.86);backdrop-filter:blur(10px);overflow:auto;
+         padding:calc(10px + env(safe-area-inset-top)) 14px
+                 calc(10px + env(safe-area-inset-bottom))}
+  #param .barre{display:flex;align-items:center;gap:12px;font-weight:800;
+                margin-bottom:12px}
+</style></head><body>
+<div class="titre">
+  <h1>Pivvy</h1>
+  <!-- LES REGLAGES SORTENT DU CHEMIN.
+
+     « Apparence de cette page » et « ce n'est pas moi » etaient poses au
+     milieu des ecrans de jeu, sous le nom du joueur. L'un ne sert qu'une
+     fois, l'autre est un bouton d'abandon a portee de pouce pendant toute
+     la soiree — et les deux repoussaient vers le bas ce qu'on est venu
+     regarder. Ils vivent maintenant derriere un engrenage, dans un panneau
+     pose HORS de `#app`, pour la meme raison que la messagerie : `#app` est
+     reconstruit a chaque etat recu. -->
+  <button id="reglages">⚙</button>
+</div>
+<div class="sub" id="sub">Connexion au salon…</div>
+<div id="app"></div>
+<div class="foot" id="foot"></div>
+
+<!-- LA MESSAGERIE VIT EN DEHORS DE `#app`, ET C'EST DELIBERE.
+     `#app` est reconstruit a chaque etat recu — toutes les deux secondes. Un
+     champ de saisie qui s'y trouverait serait detruit au milieu d'un mot, et
+     le clavier se refermerait : exactement la panne qu'on a deja corrigee
+     deux fois ailleurs. Ici la structure est posee une fois pour toutes, et
+     seules les LIGNES NOUVELLES s'ajoutent a la liste. -->
+<button id="cartes" hidden><span>🃏</span><i id="pastilleC" hidden></i></button>
+<button id="bulle" hidden><span>💬</span><i id="pastille" hidden></i></button>
+<!-- LA MAIN, EN DEHORS DE `#app` POUR LA MEME RAISON QUE LA MESSAGERIE :
+     `#app` est reconstruit a chaque etat recu, et une fenetre ouverte se
+     refermerait toutes les deux secondes. -->
+<div id="param" hidden>
+  <div class="barre">
+    <button id="retourP" class="rond">←</button>
+    <span>Reglages</span>
+  </div>
+  <div id="paramCorps"></div>
+</div>
+<!-- LE FORMULAIRE, HORS DE `#app` COMME TOUT CE QUI SE SAISIT.
+     `#app` est reconstruit a chaque changement de scene — et pendant une
+     manche chronometree, la scene change CHAQUE SECONDE. Un champ de saisie
+     pose dedans serait detruit a chaque tic, avec le clavier et le mot en
+     cours de frappe. C'est la troisieme fois que cette regle se paie ; elle
+     est desormais structurelle. -->
+<div id="form" hidden>
+  <div class="barre">
+    <button id="retourF" class="rond">←</button>
+    <span id="titreF">Ta reponse</span>
+  </div>
+  <div id="corpsF"></div>
+</div>
+<div id="jeu" hidden>
+  <div class="barre">
+    <button id="retourC" class="rond">←</button>
+    <span>Tes cartes</span>
+  </div>
+  <div id="mainC"></div>
+</div>
+
+<div id="tchat" hidden>
+  <div class="barre">
+    <button id="retour" class="rond">←</button>
+    <span>Messages</span>
+  </div>
+  <div id="lignes"></div>
+  <div class="saisie">
+    <input id="motxt" type="text" placeholder="Ton message" maxlength="200">
+    <button id="envoi" class="rond">↑</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ==========================================================
+     A REMPLIR UNE FOIS, AVANT DE PUBLIER CETTE PAGE.
+
+     Les deux memes valeurs que les `--dart-define` de
+     l'application : Project Settings -> API dans Supabase.
+
+     La cle publiable est FAITE pour etre publique — elle part
+     de toute façon dans cette page, que n'importe qui peut
+     lire. Elle ne donne le droit que de parler sur un canal
+     dont il faut connaitre le code. Ne jamais mettre ici la
+     cle « secret » / `service_role`.
+     ========================================================== */
+  var CONFIG = {
+    url: '',
+    key: '',
+    /* LE TUYAU. Vide = relais Supabase (cette page, publiee sur le web).
+
+       `lan` quand c'est le TELEPHONE MAITRE qui sert cette page sur le
+       Wi-Fi local : il remplace cette valeur au vol en la servant. Une
+       seule page pour les deux modes, et c'est une correction d'erreur
+       autant qu'une economie — il y en avait deux, une ici et une copiee
+       dans `party_server.dart`, et elles avaient deja commence a diverger.
+       Le dessin en direct n'existait que dans celle-ci. */
+    mode: ''
+  };
+
+  /* LE STOCKAGE PEUT LEVER — navigation privee, site bloque. Une exception
+     dans un gestionnaire de clic annulerait le geste lui-meme : on
+     degraderait la memoire du choix, pas la possibilite de choisir. */
+  var S = (function(){
+    var raw = window.localStorage;
+    return {
+      getItem: function(k){ try { return raw.getItem(k); } catch(e){ return null; } },
+      setItem: function(k,v){ try { raw.setItem(k,v); } catch(e){} },
+      removeItem: function(k){ try { raw.removeItem(k); } catch(e){} }
+    };
+  })();
+  var app = document.getElementById('app');
+
+  /* LE CODE DU SALON : dans le chemin (/j/AB12C) OU en parametre
+     (?c=AB12C).
+
+     Le second n'est pas un caprice : il permet d'ouvrir cette page
+     depuis un simple fichier local, sans hebergement ni reecriture
+     d'URL, donc de l'essayer avant d'avoir un domaine. */
+  function readCode(){
+    var q = new URLSearchParams(location.search).get('c');
+    if(q) return q.trim().toUpperCase();
+    var m = location.pathname.match(/\/j\/([^\/?#]+)/i);
+    return m ? decodeURIComponent(m[1]).trim().toUpperCase() : '';
+  }
+
+  /* EN WI-FI, LE CODE NE COMPTE PAS — ET IL NE DOIT PAS ENTRER DANS LES
+     CLES DE RANGEMENT.
+
+     Ce telephone-la ne sert qu'un salon, le sien : le code ne nomme rien.
+     Mais il servait quand meme a fabriquer la cle du SECRET, et le secret
+     fabrique l'identifiant de l'appareil. Ouvrir la page par l'adresse nue
+     puis par le QR (`/j/AB12C`) donnait donc deux secrets, donc deux
+     identifiants, donc DEUX APPAREILS CONNECTES pour un seul telephone —
+     et le compte grimpait a chaque forme d'adresse essayee. */
+  var code = CONFIG.mode === 'lan' ? '' : readCode();
+  /* LE MOT DE PASSE EST RANGE PAR SALON. Une seule cle pour tous les
+     salons, et l'invite qui va d'une soiree a l'autre envoie le mot de
+     passe de la precedente — que le maitre ignore en silence. */
+  var passKey = 'pivvy_pass_' + (code || 'lan');
+  var pass = S.getItem(passKey) || '';
+
+  /* LE JOUEUR QU'ON A CHOISI, garde ici et pas seulement dans l'etat recu.
+     Un appareil peut disparaitre un moment de la liste des presents — un
+     navigateur mobile gele ses minuteurs des que l'ecran s'eteint — et
+     l'ecran ne doit surtout pas repartir a la selection pour autant. On
+     tient donc notre choix, et on le REVENDIQUE A NOUVEAU si le maitre
+     semble l'avoir oublie. */
+  var claimKey = 'pivvy_joueur_' + (code || 'lan');
+  var myClaim = S.getItem(claimKey) || null;
+
+  var state = null, err = '', adding = false, askPass = false;
+  var draft = '', nameDraft = '';
+  var lastKey = '', lastBlur = 0;
+
+  /* LE MOT PRIVE EST CACHE PAR DEFAUT, et se redevoile a la demande. Un
+     telephone passe de main en main, on se penche sur l'ecran du voisin :
+     un mot secret affiche en permanence n'est plus secret. */
+  var devoile = false;
+  var channel = null, joined = false, beat = null;
+
+  /* L'INTENTION EN ATTENTE : ce qu'on a demande, et quand.
+     Sur un canal de diffusion le maitre ne repond pas « non » — il
+     applique, ou il ignore. La seule façon de savoir qu'une intention a
+     ete refusee est donc de la surveiller et de constater qu'elle n'a
+     rien change. Encore faut-il savoir CE QU'ELLE aurait du changer :
+     d'ou le type, sans lequel un « ce n'est pas moi » reussi passerait
+     pour un mot de passe refuse. */
+  var pending = null;
+
+  /* ============================================================
+     LA SCENE : la partie, vue depuis ce telephone-ci.
+     ============================================================
+
+     LE BUT N'EST PAS QUE CHACUN JOUE DANS SON COIN. Ce serait huit parties
+     solitaires dans le meme salon, et personne ne leverait plus les yeux.
+     C'est l'inverse : cet ecran est une SECONDE VUE sur la partie qui se
+     joue au milieu de la table. L'ardoise du dessinateur fait dix
+     centimetres et six personnes se penchent dessus ; ici elle occupe
+     l'ecran entier.
+
+     ON NE RECOIT PAS UNE IMAGE, on recoit la RECETTE du dessin : des points,
+     une couleur, une epaisseur, et pour un remplissage l'endroit ou le pot a
+     ete verse. C'est la regle dure du protocole (`transport.dart`) et c'est
+     aussi la seule qui tienne — un canal de diffusion ne transporte pas
+     trente images par seconde.
+
+     ET ON RECOIT LA FIN, PAS LE TOUT. Les elements deja recus ne changent
+     plus, sauf le dernier qui peut encore grandir tant que le doigt trace :
+     le maitre n'envoie donc que ce qui suit. `ep` numerote l'epoque — une
+     ardoise effacee, un mot suivant — et des qu'elle change, tout ce qu'on
+     tient est perime. */
+  var scene = null;        // la partie legere : qui dessine, le chrono…
+  var sceneItems = [];     // les traits et remplissages, cumules
+  var sceneEpoch = -1;
+  /* La derniere signature peinte dans le DOM. Voir `signature`. */
+  var lastSigne = '';
+  /* Le resultat du dernier envoi sur le relais. Affiche dans les reglages :
+     c'est la seule façon de distinguer « ça n'est pas parti » de « ça a ete
+     refuse a l'arrivee ». */
+  var dernierEnvoi = '—';
+  /* Quand la derniere partie s'est arretee. Voir `onScene`. */
+  var interrompu = 0;
+  /* Le jeu annonce par le dernier etat, pour voir quand il change. */
+  var jeuVu = null;
+  var askedAt = 0;         // derniere resynchronisation demandee
+
+  /* Ce qui est deja peint sur le calque hors ecran : tous les elements sauf
+     le dernier, qui bouge encore. Voir `paintScene`. */
+  var sceneDone = 0;
+
+  /* Le dernier geste que le maitre a ignore. Voir l'ecran du mot de passe :
+     une fois celui-ci corrige, c'est CE geste qu'il faut refaire, et pas un
+     simple bonjour. */
+  var refused = null;
+
+  /* Un signe de vie toutes les huit secondes.
+     LE MAITRE OUBLIE UN APPAREIL QUI SE TAIT (25 s, voir `PartyController`),
+     et il ne compte que ce qu'il RECOIT : c'est un message qui prouve la
+     presence, pas une connexion ouverte. La page Wi-Fi n'avait pas ce
+     probleme sans le savoir — son sondage toutes les 2,5 s faisait office
+     de signe de vie. Ici il n'y a plus de sondage, donc il faut le dire
+     explicitement, sinon l'invite disparait de la liste au bout de vingt-
+     cinq secondes et l'ecran le renvoie choisir son joueur. */
+  /* L'EMPREINTE DE CETTE PAGE. Posee par `tools/build_guest_page.js`.
+
+     La page Wi-Fi est servie par l'appli : elle ne peut pas etre en retard.
+     La page 4G, elle, est hebergee ailleurs et se televerse a la main — et
+     rien ne disait qu'elle etait restee en arriere. Une soiree entiere a ete
+     passee a chercher un bug de reseau deja corrige dans le depot, mais qui
+     tournait encore chez l'hebergeur.
+
+     Le maitre diffuse l'empreinte qu'il attend (`pv`). Quand elle ne
+     correspond pas, la page le dit elle-meme, en haut de l'ecran. */
+  var PAGE_VERSION = '66269bfe';
+
+  var HEARTBEAT_MS = 8000;
+
+  /* Combien de temps on laisse a une intention avant de s'en inquieter.
+     Le maitre rediffuse toutes les deux secondes et repond immediatement a
+     une intention traitee : cinq secondes sont largement au-dessus du cas
+     normal. */
+  var PENDING_MS = 5000;
+
+  /* ON REESSAIE AVANT D'ACCUSER, et c'est le vrai correctif.
+
+     L'ancienne version passait du silence a « le salon n'a pas pris en
+     compte ton choix » en une seule etape. C'etait un raisonnement faux :
+     sur un canal de diffusion, RIEN N'EST GARANTI — ni l'aller ni le
+     retour. Un message perdu, un relais lent, une seconde de 4G qui
+     s'accroche, et l'invite se faisait accuser d'un mot de passe qui
+     n'existait pas ; puis, comme le geste etait annule, il ne pouvait plus
+     choisir son joueur du tout.
+
+     Une intention est donc REJOUEE une fois avant qu'on en tire une
+     conclusion. C'est sans danger : le maitre est l'autorite et les
+     intentions sont idempotentes — « je suis Lea » deux fois, c'est
+     toujours Lea. Et on ne parle de mot de passe que si le salon a dit
+     qu'il en avait un (`lock`) ; sinon on dit ce qui s'est reellement
+     passe, c'est-a-dire que ça n'est pas passe. */
+  var RETRY_MS = 2500;
+
+  var THEMES = {
+    minuit:['#0A1436','#16409B','#050B22','#6C9BFF'],
+    aurore:['#1B0B3B','#6B2E9C','#120627','#C084FF'],
+    neon:  ['#05070E','#16203A','#03040A','#2BE8C5'],
+    braise:['#200705','#521A0D','#140403','#FF8A5B']
+  };
+  function applyTheme(name){
+    var t = THEMES[name] || THEMES.minuit;
+    var r = document.documentElement.style;
+    r.setProperty('--bg1',t[0]); r.setProperty('--bg2',t[1]);
+    r.setProperty('--bg3',t[2]); r.setProperty('--accent',t[3]);
+    S.setItem('pivvy_theme', name);
+  }
+  applyTheme(S.getItem('pivvy_theme') || 'minuit');
+
+  /* ------------------------------------------------------------------
+     LE SECRET DE CET APPAREIL
+
+     Trois jeux donnent a chacun quelque chose que les autres ne doivent pas
+     lire : le mot de l'infiltre, le mot interdit, la mission secrete. Or le
+     salon DIFFUSE — chaque message part a tous. Envoyer ces mots en clair
+     reviendrait a les donner a tout le monde : il suffirait d'ouvrir la
+     console pour lire le mot de l'infiltre, et le jeu n'existerait plus.
+
+     Cet appareil tire donc un secret au hasard, le garde, et le donne au
+     maitre avec ses intentions. Le maitre chiffre notre part avec. Les
+     autres recoivent les octets et n'en font rien.
+
+     CE N'EST PAS DE LA CRYPTOGRAPHIE et il ne faut pas le presenter
+     autrement : un xorshift 32 bits et un ou-exclusif. Ce que ça arrete,
+     c'est le seul adversaire reel ici — l'invite curieux qui ouvre la
+     console pendant la partie. Voir `lib/core/secret_wire.dart` : les deux
+     implementations doivent s'accorder au bit pres, et les vecteurs d'essai
+     sont le contrat. */
+  var secKey = 'pivvy_secret_' + (code || 'lan');
+  var secret = S.getItem(secKey);
+  if(!secret){
+    secret = '';
+    var alpha = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    for(var si = 0; si < 32; si++){
+      secret += alpha.charAt(Math.floor(Math.random() * alpha.length));
+    }
+    S.setItem(secKey, secret);
+  }
+  /* L'identifiant DECOULE du secret : il n'est plus range nulle part, et il
+     ne peut plus etre le sien sans avoir le secret qui va avec. */
+  var dev = idDepuis(secret);
+
+  /* L'IDENTIFIANT DE CET APPAREIL, DERIVE DU SECRET.
+
+     Il etait tire au hasard et rangé a part. C'etait une faille, et pas une
+     petite : le champ `f` d'un message est ecrit par l'expediteur, et les
+     identifiants de tout le monde sont diffuses en clair dans `claims`.
+     N'importe qui pouvait envoyer un bonjour signe du nom d'un autre, imposer
+     SON secret a l'appareil du voisin, et lire ensuite la main du voisin —
+     pendant que le voisin ne savait plus lire la sienne.
+
+     L'identifiant est maintenant une empreinte du secret, et le maitre refuse
+     tout message dont le `f` ne correspond pas au secret fourni. Usurper
+     quelqu'un demande de deviner ses trente-deux caracteres. */
+  function idDepuis(cle){
+    var h = 0x811c9dc5, b = octets(cle);
+    for(var i = 0; i < b.length; i++){
+      h = (h ^ b[i]) >>> 0;
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    var st = (h | 1) >>> 0, out = '';
+    for(var k = 0; k < 3; k++){
+      st = (st ^ (st << 13)) >>> 0;
+      st = (st ^ (st >>> 17)) >>> 0;
+      st = (st ^ (st << 5)) >>> 0;
+      out += ('0000000' + st.toString(16)).slice(-8);
+    }
+    return out.slice(0, 16);
+  }
+
+  function octets(str){
+    /* `TextEncoder` fait ça, et n'existe pas partout ou cette page doit
+       tourner. Le brouillage travaille sur des OCTETS UTF-8, pas sur des
+       caracteres : confondre les deux marche parfaitement en anglais et
+       casse sur le premier « é », c'est-a-dire sur presque tous les mots du
+       jeu. */
+    var utf = unescape(encodeURIComponent(str));
+    var out = [];
+    for(var i = 0; i < utf.length; i++) out.push(utf.charCodeAt(i) & 255);
+    return out;
+  }
+  function texte(bytes){
+    var s2 = '';
+    for(var i = 0; i < bytes.length; i++) s2 += String.fromCharCode(bytes[i]);
+    try { return decodeURIComponent(escape(s2)); } catch(e){ return s2; }
+  }
+  function flot(cle, n){
+    var h = 0x811c9dc5;
+    var b = octets(cle);
+    for(var i = 0; i < b.length; i++){
+      h = (h ^ b[i]) >>> 0;
+      /* `Math.imul` ET PAS `*`. En JavaScript, `h * 0x01000193` passe par un
+         flottant sur cinquante-trois bits et perd les bits de poids faible
+         des que le produit depasse : le resultat s'ecarterait de celui du
+         Dart sans rien signaler. `Math.imul` fait la multiplication 32 bits
+         exacte, celle que fait le Dart. */
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    var st = (h | 1) >>> 0, out = [];
+    for(var k = 0; k < n; k++){
+      st = (st ^ (st << 13)) >>> 0;
+      st = (st ^ (st >>> 17)) >>> 0;
+      st = (st ^ (st << 5)) >>> 0;
+      out.push(st & 255);
+    }
+    return out;
+  }
+  function sceller(cle, str){
+    var b = octets(str), k = flot(cle, b.length), out = '';
+    for(var i = 0; i < b.length; i++) out += String.fromCharCode(b[i] ^ k[i]);
+    return btoa(out);
+  }
+  function ouvrir(cle, sceau){
+    try{
+      var brut = atob(sceau), k = flot(cle, brut.length), out = [];
+      for(var i = 0; i < brut.length; i++){
+        out.push((brut.charCodeAt(i) & 255) ^ k[i]);
+      }
+      return texte(out);
+    }catch(e){ return null; }
+  }
+
+  function el(tag, cls, txt){
+    var e=document.createElement(tag); if(cls)e.className=cls;
+    if(txt!=null)e.textContent=txt; return e;
+  }
+
+  // ---------------------------------------------------------- protocole
+
+  /* L'ENVELOPPE, IDENTIQUE A `PartyMessage` COTE DART.
+     Trois cles courtes, dans cet ordre : type, emetteur, donnees.
+     Un seul caractere de decalage et les deux cotes ne se
+     comprennent plus — sans erreur, sans trace, juste un salon ou
+     personne n'arrive. */
+  function encode(type, data){
+    return JSON.stringify({ t: type, f: dev, d: data || {} });
+  }
+
+  function decode(raw){
+    try{
+      var j = JSON.parse(raw);
+      if(!j || typeof j !== 'object') return null;
+      return { type: j.t || '', from: j.f || '', data: j.d || {} };
+    }catch(e){ return null; }
+  }
+
+  /* SORT LE CONTENU DE L'ENVELOPPE, quelle qu'elle soit.
+     Selon la version de la bibliotheque, le rappel recoit soit ce que
+     l'expediteur a envoye, soit l'enveloppe complete qui le contient.
+     Meme prudence que du cote Dart (`RelayTransport.unwrap`). */
+  function unwrap(payload){
+    if(!payload) return null;
+    if(typeof payload.b === 'string') return payload.b;
+    if(payload.payload && typeof payload.payload.b === 'string'){
+      return payload.payload.b;
+    }
+    return null;
+  }
+
+  function send(type, data){
+    if(!joined || !tuyau) return;
+    /* LE SECRET VOYAGE AVEC CHAQUE INTENTION, comme le mot de passe et pour
+       la meme raison : sur un canal de diffusion il n'y a pas de
+       « connexion » ou le deposer une fois. Le maitre retient le dernier
+       recu pour cet appareil. */
+    var body = Object.assign({ pass: pass, k: secret }, data || {});
+    tuyau.send(encode(type, body));
+  }
+
+  function intent(type, data){
+    /* `hello` n'est PAS surveille : il ne change rien d'observable dans
+       l'etat, donc l'attendre reviendrait a lever une alerte a chaque
+       fois. Un mot de passe faux se decouvre au premier vrai geste. */
+    if(type !== 'hello'){
+      pending = { kind: type, player: (data || {}).player || null,
+                  data: data || {}, at: Date.now() };
+    }
+    send(type, data);
+  }
+
+  /* L'etat recu satisfait-il l'intention en attente ? */
+  function satisfied(st){
+    if(!pending) return true;
+    var mine = (st && st.claims) ? st.claims[dev] : null;
+    if(pending.kind === 'claim') return mine === pending.player;
+    if(pending.kind === 'add') return !!mine;
+    if(pending.kind === 'leave') return !mine;
+    return true;
+  }
+
+  // ------------------------------------------------------------ canal
+
+  /* ------------------------------------------------------------------
+     LE TUYAU
+
+     DEUX TUYAUX, UNE SEULE PAGE. C'est le meme protocole des deux cotes —
+     les memes enveloppes, les memes intentions, les memes ecrans — et
+     seule la façon dont les octets circulent change :
+
+       - RELAIS : un canal de diffusion Supabase. Marche en 4G, donc
+         partout, mais demande un projet configure ;
+       - WI-FI : le telephone maitre sert lui-meme cette page et pousse les
+         messages en SSE. Zero infrastructure, mais tout le monde sur le
+         meme reseau.
+
+     Un tuyau expose trois choses : `start`, `send(raw)`, et il appelle
+     `recu(raw)` quand quelque chose arrive. Rien d'autre ne les distingue,
+     et rien au-dessus ne sait lequel est branche.
+     ------------------------------------------------------------------ */
+  var tuyau = null;
+
+  function recu(raw){
+    var m = decode(raw);
+    /* On ignore ses propres messages : selon la configuration du canal, le
+       serveur peut les renvoyer a l'expediteur. */
+    if(!m || m.from === dev) return;
+    onMessage(m);
+  }
+
+  function ouvert(){
+    joined = true; err = '';
+    send('hello', {});
+    startBeat();
+    render(1);
+  }
+
+  function ferme(message){
+    joined = false;
+    stopBeat();
+    err = message || 'Connexion au salon perdue. Nouvel essai…';
+    render(1);
+  }
+
+  /* LA BIBLIOTHEQUE SUPABASE N'EST CHARGEE QUE SI ON S'EN SERT.
+
+     Elle etait dans une balise `<script src>` en tete de page. En Wi-Fi
+     local, le telephone de l'invite n'a souvent AUCUN acces a internet — le
+     seul interet de ce reseau, ici, est de le relier au telephone d'a cote —
+     et le navigateur attendait ce fichier qui n'arriverait jamais avant
+     d'afficher quoi que ce soit. */
+  function chargerSupabase(suite){
+    if(window.supabase) return suite();
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+    s.onload = suite;
+    s.onerror = function(){
+      ferme('Impossible de charger la bibliotheque du relais. '
+            + 'Verifie la connexion internet de ce telephone.');
+    };
+    document.head.appendChild(s);
+  }
+
+  function relayTuyau(){
+    var client = window.supabase.createClient(CONFIG.url, CONFIG.key);
+    channel = client.channel('party-' + code, {
+      /* `ack` demande au serveur de confirmer chaque diffusion. Sans lui,
+         `send` rend « ok » des qu'il a confie le message a la bibliotheque,
+         ce qui ne prouve rien. */
+      config: { broadcast: { ack: true, self: false } },
+    });
+    channel.on('broadcast', { event: 'm' }, function(msg){
+      var raw = unwrap(msg && msg.payload ? msg.payload : msg);
+      if(raw) recu(raw);
+    });
+    return {
+      start: function(){
+        channel.subscribe(function(status){
+          if(status === 'SUBSCRIBED') ouvert();
+          else if(status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') ferme();
+        });
+      },
+      send: function(raw){
+        /* ON REGARDE CE QUE RENDENT LES ENVOIS.
+
+           Il etait ignore, et c'est la piece d'information qui manquait a
+           trois diagnostics : quand un geste reste sans effet, on ne savait
+           pas s'il n'etait PAS PARTI ou s'il avait ete REFUSE a l'arrivee.
+           Ce sont deux pannes opposees — l'une chez l'invite, l'autre chez le
+           maitre — et on les cherchait toutes les deux au meme endroit.
+
+           `ack: true` (voir la creation du canal) fait que « ok » signifie
+           vraiment « le serveur l'a pris », et non « je l'ai confie a la
+           bibliotheque ». Le resultat s'affiche dans les reglages. */
+        try{
+          var r = channel.send({ type:'broadcast', event:'m',
+                                 payload:{ b: raw } });
+          if(r && typeof r.then === 'function'){
+            r.then(function(st){ dernierEnvoi = String(st); },
+                   function(e){ dernierEnvoi = 'erreur : ' + e; });
+          } else if(r){
+            dernierEnvoi = String(r);
+          }
+        }catch(e){ dernierEnvoi = 'erreur : ' + e; }
+      }
+    };
+  }
+
+  /* LE TUYAU WI-FI : SSE pour recevoir, POST pour envoyer.
+
+     POURQUOI PAS UN SONDAGE, qui etait la solution precedente. Il tournait
+     toutes les deux secondes et demie — largement assez pour une liste de
+     joueurs, et sans aucun rapport avec un trait qui se trace. Le dessin en
+     direct demande dix messages par seconde ; sonder a cette cadence serait
+     dix requetes par seconde et par invite, sur un telephone qui fait deja
+     tourner la soiree.
+
+     Le SSE est du HTTP ordinaire : une reponse qui ne se termine pas. Le
+     navigateur reconnecte tout seul quand elle tombe, ce qui couvre
+     l'ecran qu'on eteint et le Wi-Fi qui vacille. */
+  function lanTuyau(){
+    var flux = null, mort = null;
+    function brancher(){
+      if(flux){ try{ flux.close(); }catch(e){} }
+      flux = new EventSource('/api/events?d=' + encodeURIComponent(dev)
+                             + '&c=' + encodeURIComponent(code));
+      flux.onopen = function(){ if(mort){ clearTimeout(mort); mort = null; } ouvert(); };
+      flux.onmessage = function(e){ if(e && e.data) recu(e.data); };
+      flux.onerror = function(){
+        /* PAS DE PANIQUE IMMEDIATE : `EventSource` reconnecte tout seul, et
+           afficher « connexion perdue » a chaque hoquet ferait clignoter
+           l'ecran pour rien. On ne le dit que si ça ne revient pas. */
+        if(mort) return;
+        mort = setTimeout(function(){ mort = null; ferme(); }, 4000);
+      };
+    }
+    return {
+      start: brancher,
+      send: function(raw){
+        try{
+          fetch('/api/msg', { method:'POST', body: raw,
+                              headers:{'Content-Type':'text/plain'} })
+            .catch(function(){});
+        }catch(e){}
+      }
+    };
+  }
+
+  function connect(){
+    var lan = CONFIG.mode === 'lan';
+    if(!lan && (!CONFIG.url || !CONFIG.key)){
+      err = 'Cette page n’est pas configuree : il manque l’adresse '
+          + 'du projet et la cle. Voir le bloc CONFIG en haut du fichier.';
+      render(1); return;
+    }
+    /* EN WI-FI IL N'Y A PAS DE CODE DANS L'ADRESSE, et il n'en faut pas :
+       ce telephone-la ne sert qu'un salon, le sien. Le code sert a nommer un
+       canal partage, ce que le relais a et que le Wi-Fi n'a pas. */
+    if(!code && !lan){
+      err = 'Aucun code de salon dans l’adresse. Le QR code de la soiree '
+          + 'ouvre la bonne page ; sinon, ajouter ?c=CODE a la fin.';
+      render(1); return;
+    }
+    if(lan){
+      tuyau = lanTuyau();
+      tuyau.start();
+      return;
+    }
+    chargerSupabase(function(){
+      tuyau = relayTuyau();
+      tuyau.start();
+    });
+  }
+
+  function onMessage(m){
+    if(m.type === 'state'){
+      state = m.data;
+      /* ON NE FERME PAS L'ECRAN DU MOT DE PASSE SUR UN ETAT RECU.
+         Le maitre rediffuse l'etat a TOUT LE CANAL toutes les deux
+         secondes, mot de passe ou pas : le refermer ici detruisait le
+         champ deux secondes apres l'avoir ouvert, et le mot de passe
+         devenait impossible a taper. Il ne se ferme que sur une
+         intention qui aboutit, ou quand l'invite valide. */
+      if(pending && satisfied(state)){
+        learnClaim();
+        pending = null;
+        askPass = false;
+        err = '';
+      }
+      if(!pending && !askPass) err = '';
+      /* UN NOUVEAU JEU EFFACE L'INTERRUPTION DU PRECEDENT.
+
+         Le message ne s'effaçait qu'a l'arrivee d'une nouvelle SCENE. Or un
+         jeu qui vient de s'ouvrir n'en publie pas forcement tout de suite —
+         la chasse express reste d'abord sur ses reglages — et les invites
+         lisaient « la manche a ete interrompue » pendant que le jeu suivant
+         demarrait visiblement sur le telephone principal. */
+      if(interrompu && state.game !== jeuVu){ interrompu = 0; }
+      jeuVu = state.game || null;
+      reclaim();
+      render();
+      majTchat();
+      majJeu();
+    } else if(m.type === 'scene'){
+      onScene(m.data);
+    } else if(m.type === 'bye'){
+      state = null;
+      pending = null;
+      stopBeat();
+      err = 'La soiree est terminee.';
+      resetScene();
+      render(1);
+      /* LES DEUX FENETRES VIVENT HORS DE `#app`, donc `render` ne les touche
+         pas : sans ces deux lignes, le panneau des cartes restait ouvert
+         par-dessus « la soiree est terminee », avec des cartes injouables. */
+      majTchat();
+      majJeu();
+      fermerForm(true);
+      formVu = null;
+      /* ET LES REGLAGES, pour la meme raison exactement : ils vivent hors de
+         `#app` et passent AU-DESSUS de tout. Laisses ouverts, ils cachaient
+         « la soiree est terminee » derriere un panneau dont le bouton
+         « ce n'est pas moi » envoyait encore des intentions dans un salon
+         ferme. Sans depiler l'historique : la soiree est finie, on ne
+         navigue plus. */
+      fermerParam(true);
+    }
+  }
+
+  function resetScene(){
+    scene = null; sceneItems = []; sceneEpoch = -1; sceneDone = 0;
+    lastSigne = '';
+    /* `interrompu` est repose par l'appelant quand c'est une interruption.
+       Ici on l'efface, parce que `resetScene` sert aussi a la fin de soiree —
+       et « la manche a ete interrompue » par-dessus « la soiree est
+       terminee » raconte deux choses differentes du meme evenement. */
+    interrompu = 0;
+    devoile = false;
+    if(committed){ committed.width = committed.width; }
+  }
+
+  /* RECOLLE LA QUEUE RECUE A CE QU'ON TIENT DEJA.
+
+     Trois cas seulement, et le troisieme est la raison d'etre de tout le
+     mecanisme :
+       - epoque differente : on repart de zero, et il FAUT que l'envoi
+         commence a zero, sinon on ne sait pas de quoi il est la suite ;
+       - l'envoi commence apres la fin de ce qu'on a : il nous manque un
+         morceau, perdu en route — un canal de diffusion ne garantit rien ;
+       - sinon : on remplace a partir de `i0`, et c'est le cas courant.
+
+     Dans les deux premiers cas on ne devine pas : on demande au maitre de
+     tout renvoyer. C'est rare, et c'est le prix de ne rien recevoir en trop
+     le reste du temps. */
+  function onScene(d){
+    if(!d || d.sc === null || d.sc === undefined){
+      /* LA PARTIE S'EST ARRETEE, ET IL FAUT LE DIRE.
+
+         La scene disparaissait sans un mot : l'ecran revenait a « en attente
+         du lancement d'un jeu », ou pire — quand la page ne se redessinait
+         pas — restait sur le dernier ecran avec un chrono fige. Un chrono
+         arrete ressemble a une panne de reseau, pas a une manche
+         interrompue, et c'est le maitre qu'on va secouer.
+
+         Le message ne dure pas : le jeu suivant l'efface en arrivant. */
+      var avait = scene !== null;
+      resetScene();
+      /* ET ON FERME LE FORMULAIRE. Ce chemin sort AVANT le `majForm()` de la
+         fin, donc rien ne le refermait : quitter le jeu, appuyer sur
+         « recommencer » ou perdre le dernier invite laissait un formulaire
+         plein ecran par-dessus tout, avec un bouton d'envoi encore vivant.
+         L'invite le remplissait, l'envoyait dans le vide, et se retrouvait
+         marque comme ayant repondu — ce qui le bloquait pour la manche
+         suivante. Le chemin `bye` le faisait deja ; celui-ci avait ete
+         oublie. */
+      fermerForm(true);
+      formVu = null;
+      if(avait){
+        interrompu = Date.now();
+        render(1);
+      }
+      return;
+    }
+    interrompu = 0;
+    var etait = screenKey();
+    scene = d.sc;
+    var i0 = d.i0 || 0, tail = d.it || [], n = d.n || 0;
+    var neuf = (d.ep !== sceneEpoch);
+
+    if((neuf && i0 !== 0) || i0 > sceneItems.length){
+      askResync();
+      if(neuf) return;           // rien de fiable a peindre en attendant
+    } else {
+      if(neuf){
+        sceneItems = []; sceneDone = 0;
+        if(committed) committed.width = committed.width;
+        /* NOUVELLE EPOQUE, NOUVEAU SECRET : un mot devoile ne doit pas le
+           rester quand le mot suivant arrive — sinon celui qui a laisse son
+           telephone sur la table donne le mot d'apres sans y toucher. */
+        devoile = false;
+      }
+      /* LE CALQUE DEJA PEINT NE PEUT PAS REVENIR EN ARRIERE : si l'envoi
+         reecrit un element qu'on avait fige, on refige a partir de la. Sans
+         ça, un trait corrige resterait affiche dans sa version d'avant,
+         indefiniment. */
+      if(i0 < sceneDone){ sceneDone = i0; if(committed) committed.width = committed.width; repaintDone(); }
+      sceneItems = sceneItems.slice(0, i0).concat(tail);
+      if(n && sceneItems.length !== n) askResync();
+      sceneEpoch = d.ep;
+    }
+
+    // L'EFFET PUBLIC : le meme pour tout le monde. Voir `jouerEffet`.
+    jouerEffet(scene.fx);
+    // ET LE NOTRE, s'il y en a un : la mort, ou « c'est ton tour ». Il voyage
+    // dans la part privee, donc brouille — les voisins recoivent les octets
+    // et ne savent pas de qui il s'agit.
+    var mien = privee();
+    if(mien) jouerEffet(mien.fx);
+
+    /* ON REDESSINE QUAND LA SCENE A CHANGE, pas seulement quand on change
+       d'ECRAN. C'etait le defaut le plus couteux du salon, et il se
+       presentait comme un probleme de reseau.
+
+       L'ancienne condition ne comparait que `screenKey()` — « selection »,
+       « moi », « scene ». Or deux jets de des successifs sont tous les deux
+       l'ecran « scene » : la cle ne bougeait pas, donc rien n'etait
+       redessine, et le nouveau resultat n'apparaissait qu'au battement
+       d'etat suivant. Mesure au banc : premiere scene 15 ms, chacune des
+       suivantes 2 009 ms — c'est-a-dire exactement la periode de
+       rediffusion. En 4G, ou un battement peut se perdre, ça devenait les
+       dix secondes rapportees.
+
+       On ne peut pas pour autant redessiner a chaque message : pendant un
+       dessin, la scene change dix fois par seconde et reconstruire le DOM a
+       ce rythme ferait clignoter l'ecran et perdrait le canevas. D'ou la
+       SIGNATURE : tout ce qui se lit dans le DOM — le titre, les scores, le
+       mot, le chrono — sans la liste des traits, qui, elle, se peint sur le
+       canevas et n'a besoin que de `schedulePaint`. */
+    var signe = signature();
+    if(screenKey() !== etait || signe !== lastSigne){
+      lastSigne = signe;
+      render(1);
+    } else {
+      schedulePaint();
+    }
+    majForm();
+  }
+
+  /* CE QUI, DANS LA SCENE, SE LIT DANS LE DOM.
+
+     `it` est exclu : c'est l'ardoise, elle va sur le canevas. `priv` l'est
+     aussi — il change a chaque envoi puisqu'il est brouille avec un nonce,
+     et le comparer redessinerait tout, tout le temps. Ce qu'il porte de
+     visible (le mot, l'effet) est traite a part. */
+  function signature(){
+    if(!scene) return '';
+    var out = [];
+    for(var k in scene){
+      if(k === 'it' || k === 'priv') continue;
+      out.push(k + '=' + JSON.stringify(scene[k]));
+    }
+    /* Le nombre de traits entre quand meme dans la signature, mais seulement
+       comme un COMPTE : il faut redessiner quand l'ardoise s'efface d'un
+       coup (nouvelle manche), pas a chaque point ajoute. */
+    out.push('#' + (sceneItems.length === 0 ? '0' : '1'));
+    return out.join('|');
+  }
+
+  function askResync(){
+    /* PAS PLUS D'UNE PAR SECONDE. Le maitre repond a la premiere, et la
+       reponse met un aller-retour a revenir : sans ce frein, une seconde de
+       reseau capricieux produirait dix demandes, dix ardoises completes en
+       retour, et acheverait le canal qu'on essayait de menager. */
+    if(Date.now() - askedAt < 1000) return;
+    askedAt = Date.now();
+    send('resync', {});
+  }
+
+  /* Apres un « ajoute-moi », c'est le MAITRE qui a choisi l'identifiant du
+     joueur cree : on l'apprend en lisant l'etat, et on le retient comme un
+     choix ordinaire. */
+  function learnClaim(){
+    if(!pending || pending.kind !== 'add') return;
+    if(!state || !state.claims || !state.claims[dev]) return;
+    myClaim = state.claims[dev];
+    S.setItem(claimKey, myClaim);
+  }
+
+  /* ON SE RE-REVENDIQUE TOUT SEUL.
+     Si l'etat ne nous attribue plus le joueur qu'on avait choisi, deux cas
+     seulement : soit le maitre nous a oublies faute de nouvelles, soit
+     quelqu'un d'autre a pris ce joueur. Dans le premier on redemande, dans
+     le second on lache — c'est la seule façon de distinguer un decrochage
+     d'un vrai changement, et de ne pas se battre indefiniment avec un autre
+     telephone pour le meme prenom. */
+  function reclaim(){
+    if(!myClaim || !state) return;
+    // Pas pendant que l'invite saisit un mot de passe : il s'occupe deja du
+    // probleme, et rejouer la demande ne ferait qu'ajouter du trafic.
+    if(askPass) return;
+    var claims = state.claims || {};
+    if(claims[dev] === myClaim) return;
+    for(var d in claims){
+      if(claims[d] === myClaim){
+        /* Quelqu'un d'autre est ce joueur : on renonce. Et on retire la
+           demande en vol — sans ça, la surveillance la declarait ignoree
+           cinq secondes plus tard et accusait le mot de passe, juste apres
+           une passation parfaitement legitime. */
+        myClaim = null;
+        pending = null;
+        S.removeItem(claimKey);
+        render(1);
+        return;
+      }
+    }
+    if(pending) return;              // une demande est deja en vol
+    intent('claim', { player: myClaim });
+  }
+
+  function startBeat(){
+    stopBeat();
+    beat = setInterval(function(){ if(joined) send('hello', {}); }, HEARTBEAT_MS);
+  }
+  function stopBeat(){
+    if(beat){ clearInterval(beat); beat = null; }
+  }
+
+  /* LE MOT DE PASSE NE SE REFUSE PAS, IL S'IGNORE.
+
+     Sur un canal de diffusion il n'y a pas de reponse a une intention :
+     le maitre applique, ou ne fait rien. Un mot de passe faux ne
+     produit donc aucune erreur — l'invite appuie, et il ne se passe
+     rien, ce qui ressemble a une panne.
+
+     D'ou cette surveillance : si une intention reste sans effet
+     plusieurs secondes alors qu'on recoit bien l'etat, c'est qu'elle
+     est ignoree. On demande alors le mot de passe. */
+  setInterval(function(){
+    if(!pending) return;
+    if(state && satisfied(state)){ learnClaim(); pending = null; return; }
+
+    /* PREMIER TEMPS : ON REJOUE. Silencieusement, une seule fois, et sans
+       toucher a l'ecran — l'invite n'a pas a savoir qu'un message s'est
+       perdu. C'est ce qui manquait : la version precedente sautait
+       directement a l'accusation. */
+    if(!pending.retried && Date.now() - pending.at >= RETRY_MS){
+      pending.retried = true;
+      send(pending.kind, pending.data);
+      return;
+    }
+
+    if(Date.now() - pending.at < PENDING_MS) return;
+
+    /* SECOND TEMPS : ça ne passe toujours pas. TROIS situations bien
+       differentes, et il a fallu les confondre pour comprendre qu'il fallait
+       les separer. */
+
+    /* 1. LA PAGE EST TROP ANCIENNE POUR CE SALON, et c'est la cause qui a
+          coute le plus cher.
+
+          Le maitre verifie l'identite de chaque intention : l'identifiant de
+          l'appareil doit etre l'empreinte du secret transmis. Une page
+          anterieure a ce changement envoie un identifiant tire au hasard, qui
+          ne correspondra jamais — le salon jette donc TOUT ce qu'elle envoie,
+          en silence. L'invite, lui, recoit l'etat sans probleme et n'a aucune
+          raison de soupconner sa page.
+
+          On le detecte a l'empreinte diffusee par le maitre, et on le dit :
+          demander un mot de passe ici envoie chercher pendant une heure
+          quelque chose qui n'existe pas. */
+    if(state && state.pv && state.pv !== PAGE_VERSION){
+      askPass = false;
+      err = 'Cette page est trop ancienne pour ce salon : il refuse tout ce '
+          + 'qu’elle envoie. Elle doit etre re-televersee chez l’hebergeur '
+          + 'par l’organisateur, puis rechargee ici.';
+      render(1);
+      return;
+    }
+
+    var verrouille = !!(state && state.lock);
+
+    // 4. On GARDE le geste refuse : il sera rejoue si un mot de passe le
+    // debloque. Sans ça, celui qui venait de taper son prenom devait le
+    // retaper apres avoir saisi le mot de passe.
+    refused = pending;
+    pending = null;
+
+    if(verrouille){
+      askPass = true;
+      err = pass ? 'Mot de passe refuse.' : '';
+      render(1);
+      return;
+    }
+
+    /* LE SALON N'A PAS DE MOT DE PASSE : lui en demander un enverrait
+       chercher une panne qui n'existe pas. On le dit tel quel, et on laisse
+       le geste refait a portee de doigt. */
+    askPass = false;
+    err = 'Le salon n\u2019a pas repondu. Reessaie.';
+    render(1);
+  }, 1000);
+
+  // ------------------------------------------------------------ rendu
+
+  /* MEME PRECAUTION QUE SUR LA PAGE WI-FI, pour la meme raison : la
+     page se redessine a chaque etat recu, ce qui detruit le champ de
+     saisie et referme le clavier au milieu d'un mot de passe. On ne
+     saute que le redessin d'un ecran PAR LUI-MEME ; un changement
+     d'ecran passe toujours. */
+  /* LE SALON EST VERROUILLE ET ON N'A PAS ENCORE LE MOT DE PASSE.
+
+     On le demande AVANT de laisser choisir un joueur, parce que sinon le
+     premier geste part, se fait ignorer, et l'invite passe par un echec
+     avant d'apprendre ce que le salon aurait pu lui dire tout de suite. Le
+     maitre diffuse `lock` : autant s'en servir. */
+  function verrouille(){
+    return !!(state && state.lock) && !pass;
+  }
+
+  function screenKey(){
+    if(askPass || verrouille()) return 'pass';
+    if(!state) return 'wait';
+    var tenu = myClaim || (state.claims && state.claims[dev]);
+    /* LA SCENE NE PASSE PAS DEVANT LA SELECTION, et c'est volontaire : tant
+       qu'on n'a pas dit qui on est, on n'est pas dans la partie, et regarder
+       l'ardoise avant d'exister ferait rater le seul geste qui compte. Un
+       bandeau signale la partie en cours sur l'ecran de selection. */
+    if(tenu && scene) return 'scene';
+    if(tenu) return 'me';
+    return adding ? 'pick-add' : 'pick';
+  }
+
+  function typing(){
+    var a = document.activeElement;
+    if(a && a.tagName === 'INPUT') return true;
+    /* La fenetre entre le doigt qui quitte le champ et le clic qui
+       arrive : reconstruire la page pendant ce laps detruit le bouton
+       avant que son appui ne soit traite. */
+    return (Date.now() - lastBlur) < 700;
+  }
+
+  function render(force){
+    var key = screenKey();
+    if(!force && key === lastKey && typing()) return;
+    lastKey = key;
+
+    app.innerHTML = '';
+    /* LE PIED DE PAGE EST POSE AVANT LES SORTIES ANTICIPEES. Il ne
+       l'etait qu'a la fin du chemin le plus long, donc l'ecran du mot de
+       passe gardait le compte de joueurs de l'ecran precedent. */
+    document.getElementById('foot').textContent =
+      (state && state.players)
+        ? state.players.length + ' joueur(s) dans la partie' : '';
+    /* « AUCUN SALON » EST FAUX EN WI-FI, et c'est la seule chose que
+       l'invite voit pendant que le flux s'etablit : la page y est servie par
+       le telephone maitre lui-meme, donc il y a forcement un salon — on n'en
+       connait juste pas encore le nom. */
+    document.getElementById('sub').textContent =
+      state ? ('Salon ' + (state.code || code))
+            : (code ? ('Salon ' + code + ' — connexion…')
+                    : (CONFIG.mode === 'lan' ? 'Connexion au salon…'
+                                             : 'Aucun salon'));
+
+    /* LA PAGE EST-ELLE EN RETARD SUR L'APPLI ?
+
+       Le seul cas ou ça arrive est la page 4G, hebergee a part. Le message
+       s'adresse donc a quelqu'un qui ne peut rien y faire lui-meme : il
+       nomme le geste, et la personne qui peut le faire. */
+    if(state && state.pv && state.pv !== PAGE_VERSION){
+      var vieux = el('div','err',
+        'Cette page est plus ancienne que l’appli du salon. '
+        + 'Demande a l’organisateur de re-televerser web/join/index.html '
+        + 'chez l’hebergeur, puis recharge.');
+      app.appendChild(vieux);
+    }
+
+    if(err){ app.appendChild(el('div','err',err)); }
+
+    if(askPass || verrouille()){
+      var c=el('div','card');
+      c.appendChild(el('div','lbl','Mot de passe'));
+      if(!err){
+        c.appendChild(el('div','hint',
+          'Ce salon en demande un pour rejoindre la partie.'));
+      }
+      var i=el('input'); i.type='text';
+      i.placeholder='Demande-le a l’organisateur';
+      i.value = draft;
+      i.oninput = function(){ draft = i.value; };
+      i.onblur = function(){ lastBlur = Date.now(); };
+      c.appendChild(i);
+      var b=el('button','primary','Entrer');
+      b.onclick=function(){
+        pass = i.value.trim();
+        S.setItem(passKey, pass);
+        draft = '';
+        i.blur(); askPass = false; err='';
+        /* ON REFAIT LE GESTE QUI AVAIT ETE IGNORE, et pas un simple
+           bonjour : un « ajoute-moi » perdu obligeait a retaper son
+           prenom. */
+        if(refused){
+          var geste = refused; refused = null;
+          intent(geste.kind, geste.kind === 'claim'
+            ? { player: geste.player } : (geste.data || {}));
+        } else {
+          send('hello', {});
+        }
+        render(1);
+      };
+      c.appendChild(b); app.appendChild(c);
+      setTimeout(function(){ i.focus(); }, 0);
+      return;
+    }
+
+    if(!state){
+      var w=el('div','card');
+      w.appendChild(el('div','lbl','Patiente'));
+      w.appendChild(el('div',null, joined
+        ? 'En attente du telephone principal…'
+        : 'Connexion au salon…'));
+      app.appendChild(w);
+      return;
+    }
+
+    /* NOTRE JOUEUR D'ABORD, celui de l'etat ensuite. Tant qu'on n'a pas
+       renonce (voir `reclaim`), on reste sur l'ecran « tu es connecte » :
+       repartir a la selection a chaque trou de reseau serait insupportable
+       en pleine partie. */
+    var players = state.players || [];
+    var mineId = myClaim || (state.claims ? state.claims[dev] : null);
+    /* LE JOUEUR A-T-IL ETE SUPPRIME ? On tient notre choix contre les
+       decrochages, mais pas contre sa disparition : sinon la page reste
+       bloquee sur « Tu es connecte — Joueur », sans nom et sans issue autre
+       que « ce n'est pas moi ». */
+    if(mineId && players.length){
+      var existe = false;
+      players.forEach(function(p){ if(p.id === mineId) existe = true; });
+      if(!existe){
+        myClaim = null; pending = null;
+        S.removeItem(claimKey);
+        mineId = null;
+      }
+    }
+
+    if(mineId && scene){
+      sceneScreen(players, mineId);
+      schedulePaint();
+      return;
+    }
+
+    if(mineId){
+      var mine=null;
+      players.forEach(function(p){ if(p.id===mineId) mine=p; });
+      if(state.game){
+        app.appendChild(el('div','banner','Partie en cours : '+state.game));
+      }
+      var confirme = state.claims && state.claims[dev] === mineId;
+      var c2=el('div','card');
+      /* Tant que le maitre n'a pas confirme, on le dit : annoncer
+         « connecte » sur la foi de son propre appui est un mensonge de
+         cinq secondes quand le mot de passe est faux. */
+      c2.appendChild(el('div','lbl',
+        confirme ? 'Tu es connecte' : 'En attente du salon…'));
+      var row=el('button','me'); row.appendChild(el('span','dot'));
+      row.appendChild(el('span',null, mine ? mine.name : 'Joueur'));
+      row.onclick=function(){};
+      c2.appendChild(row);
+      c2.appendChild(el('div',null,
+        (interrompu && Date.now() - interrompu < 20000)
+          ? 'La manche a ete interrompue sur le telephone principal.'
+          : (state.game
+              ? 'Suis la partie sur l’ecran principal.'
+              : 'En attente du lancement d’un jeu.')));
+      app.appendChild(c2);
+    } else {
+      var c3=el('div','card');
+      if(scene){
+        app.appendChild(el('div','banner',
+          'Une partie est en cours. Dis qui tu es pour la suivre ici.'));
+      }
+      c3.appendChild(el('div','lbl','Qui es-tu ?'));
+      players.forEach(function(p){
+        /* GRISE SI TENU, point vert si joignable — deux choses
+           differentes. Un joueur dont le telephone dort reste a lui : sans
+           cette distinction, il apparaissait libre, le premier venu le
+           reprenait, et la retention de cinq minutes cote maitre ne servait
+           a rien. */
+        var tenu = p.held !== undefined ? p.held : p.connected;
+        var b2=el('button', tenu?'taken':null);
+        if(p.connected) b2.appendChild(el('span','dot'));
+        b2.appendChild(el('span',null,p.name + (tenu?' — deja pris':'')));
+        b2.onclick=function(){
+          myClaim = p.id; S.setItem(claimKey, p.id);
+          intent('claim',{player:p.id});
+          render(1);
+        };
+        c3.appendChild(b2);
+      });
+      if(adding){
+        var i2=el('input'); i2.type='text'; i2.placeholder='Ton prenom';
+        i2.value = nameDraft;
+        i2.oninput = function(){ nameDraft = i2.value; };
+        i2.onblur = function(){ lastBlur = Date.now(); };
+        c3.appendChild(i2);
+        var ok=el('button','primary','Rejoindre');
+        ok.onclick=function(){
+          var n=i2.value.trim(); if(!n) return;
+          i2.blur(); nameDraft=''; adding=false;
+          /* On ne connait pas encore l'identifiant du joueur cree — c'est le
+             maitre qui le fabrique. On le retiendra a la premiere reponse,
+             voir plus bas. */
+          intent('add',{name:n}); render(1);
+        };
+        c3.appendChild(ok);
+      } else {
+        var add=el('button',null,'Je ne suis pas dans la liste');
+        add.onclick=function(){ adding=true; render(1); };
+        c3.appendChild(add);
+      }
+      app.appendChild(c3);
+    }
+
+  }
+
+  /* L'ECRAN DE PARTIE.
+
+     UN SEUL RENDU POUR TOUS LES JEUX, et c'est le choix qui decide de tout
+     le reste. La page ne connait pas « la pyramide » ni « le mot interdit » :
+     elle connait un petit vocabulaire de BLOCS, et chaque jeu compose sa
+     scene avec ceux qui l'arrangent.
+
+       titre / left / total  — qui joue, et le chrono
+       big                   — un mot en grand (la bombe)
+       board + it            — l'ardoise en direct
+       des                   — des faces de des
+       rows                  — un tableau de scores
+       teams                 — des equipes et leurs membres
+       hint                  — une phrase
+       priv                  — ce qui n'est qu'a nous (voir plus bas)
+
+     Le benefice n'est pas l'economie de lignes, c'est qu'une page ANCIENNE
+     ne casse pas devant un jeu RECENT : elle affiche les blocs qu'elle
+     connait et ignore les autres. Sans ça, chaque nouveau jeu obligerait
+     tout le monde a recharger — ou, pire, laisserait un ecran blanc a celui
+     qui ne l'a pas fait.
+
+     TOUT SAUF LE MOT DES AUTRES. Ceux qui regardent cet ecran sont ceux qui
+     doivent deviner : ce que le maitre n'envoie pas, il n'y a pas a
+     l'oublier. Ce qui est adresse a UN joueur voyage brouille avec le secret
+     de son appareil (voir `sceller`) — le canal diffuse a tous, mais les
+     autres n'en font rien. */
+  function sceneScreen(players, mineId){
+    var mine = null;
+    players.forEach(function(p){ if(p.id === mineId) mine = p; });
+    var moi = mine && scene.by && mine.name === scene.by;
+
+    // --- l'entete : qui joue, et le temps qui reste
+    if(scene.by || scene.left !== undefined){
+      var head = el('div','card');
+      var t = el('div','turn');
+      t.appendChild(el('span','who', scene.by
+        ? (scene.by + (scene.verb ? (' ' + scene.verb) : ''))
+        : (scene.titre || '')));
+      if(scene.left !== undefined && scene.left !== null){
+        t.appendChild(el('span','clock', scene.left + 's'));
+      }
+      head.appendChild(t);
+      if(scene.total){
+        var jauge = el('div','gauge');
+        var barre = el('div','fill');
+        var part = Math.max(0, Math.min(1, (scene.left || 0) / scene.total));
+        barre.style.width = (part * 100) + '%';
+        /* Rouge sur la fin : la barre seule se lit mal du coin de l'oeil, et
+           c'est precisement a ce moment-la qu'on ne regarde plus le chrono. */
+        if(part < 0.2) barre.style.background = '#FF6B6B';
+        jauge.appendChild(barre);
+        head.appendChild(jauge);
+      }
+      if(scene.hint) head.appendChild(el('div','hint', moi ? (scene.hintMoi || scene.hint) : scene.hint));
+      app.appendChild(head);
+    } else if(scene.titre || scene.hint){
+      /* SANS EN-TETE, LE TITRE ET LA PHRASE S'AFFICHENT QUAND MEME.
+         L'entete n'existe que si le jeu envoie un joueur ou un chrono ; les
+         jeux qui n'ont ni l'un ni l'autre — « Ne rigole pas », le photo, la
+         mission secrete — voyaient leur `hint` tomber dans le vide. Leur
+         verdict n'arrivait donc jamais chez les invites, sans que rien ne le
+         signale. */
+      var seul = el('div','card');
+      if(scene.titre) seul.appendChild(el('div','lbl', scene.titre));
+      if(scene.hint) seul.appendChild(el('div','hint', scene.hint));
+      app.appendChild(seul);
+    }
+
+    // --- CE QUI N'EST QU'A NOUS. Le mot de l'infiltre, le mot interdit, la
+    //     mission. On le montre CACHE par defaut : le telephone passe de main
+    //     en main, on se penche sur l'ecran du voisin, et un mot secret
+    //     affiche en permanence n'est plus secret.
+    var part = privee();
+    if(part && part.text){
+      var c = el('div','card secret');
+      c.appendChild(el('div','lbl', part.label || 'Rien qu’a toi'));
+      if(devoile){
+        c.appendChild(el('div','big', part.text));
+        if(part.note) c.appendChild(el('div','hint', part.note));
+        var cacher = el('button', null, 'Cacher');
+        cacher.onclick = function(){ devoile = false; render(1); };
+        c.appendChild(cacher);
+      } else {
+        var voir = el('button','primary','• • •  Appuie pour revoir');
+        voir.onclick = function(){ devoile = true; render(1); };
+        c.appendChild(voir);
+      }
+      app.appendChild(c);
+    }
+
+    // --- UN MOT EN GRAND (la bombe : tout le monde doit le lire d'un coup)
+    if(scene.big){
+      var b = el('div','card');
+      if(scene.bigLbl) b.appendChild(el('div','lbl', scene.bigLbl));
+      b.appendChild(el('div','big', scene.big));
+      app.appendChild(b);
+    }
+
+    // --- LES DES
+    if(scene.des && scene.des.length){
+      var d = el('div','card');
+      d.appendChild(el('div','lbl', scene.desLbl || 'Le tirage'));
+      var rang = el('div','dice');
+      scene.des.forEach(function(v){ rang.appendChild(deFace(v)); });
+      d.appendChild(rang);
+      if(scene.desTotal !== undefined && scene.desTotal !== null){
+        d.appendChild(el('div','big', String(scene.desTotal)));
+      }
+      app.appendChild(d);
+    }
+
+    // --- LE FORMULAIRE : le bouton qui l'ouvre.
+    //
+    // Le panneau lui-meme vit hors de `#app` ; ici on ne pose que la porte.
+    // Elle reste visible apres l'envoi, avec un autre libelle : l'invite doit
+    // pouvoir relire ce qu'il a repondu sans que ça compte pour un renvoi.
+    var fCourant = formActuel();
+    if(fCourant && fCourant.id){
+      var fb = el('div','card');
+      fb.appendChild(el('div','lbl', fCourant.titre || 'A toi de jouer'));
+      if(fCourant.id === formEnvoye){
+        fb.appendChild(el('div','hint','Ta reponse est partie. '
+          + 'On attend les autres.'));
+      } else {
+        /* LA PORTE N'A PAS LE MEME LIBELLE QUE LE BOUTON D'ENVOI. Les deux
+           portaient « rendre ma copie », l'un dans `#app` et l'autre dans le
+           panneau : deux boutons identiques a l'ecran, dont un seul envoie
+           quoi que ce soit. */
+        var ouvre = el('button','primary', 'Répondre');
+        ouvre.onclick = function(){ ouvrirForm(); };
+        fb.appendChild(ouvre);
+      }
+      app.appendChild(fb);
+    }
+
+    // --- L'ARDOISE
+    if(scene.k === 'draw'){
+      var cadre = el('div','slate');
+      cadre.appendChild(boardEl());
+      app.appendChild(cadre);
+    }
+
+    // --- LES EQUIPES
+    if(scene.teams && scene.teams.length){
+      var e = el('div','card');
+      e.appendChild(el('div','lbl','Les equipes'));
+      scene.teams.forEach(function(eq){
+        var l = el('div','row');
+        var g = el('div');
+        g.appendChild(el('div','nom', eq.n || ''));
+        if(eq.m && eq.m.length) g.appendChild(el('div','hint', eq.m.join(', ')));
+        l.appendChild(g);
+        if(eq.v !== undefined) l.appendChild(el('div','pts', String(eq.v)));
+        e.appendChild(l);
+      });
+      app.appendChild(e);
+    }
+
+    // --- LES SCORES.
+    //     EN LECTURE SEULE, et ce n'est pas un manque : l'attribution des
+    //     points se fait sur le telephone maitre, devant tout le monde. Une
+    //     soiree ou chacun peut s'ajouter des points depuis sa poche n'est
+    //     plus une soiree, c'est une discussion.
+    if(scene.rows && scene.rows.length){
+      var r = el('div','card');
+      r.appendChild(el('div','lbl', scene.rowsLbl || 'Les scores'));
+      scene.rows.forEach(function(ligne){
+        var l = el('div','row');
+        var g2 = el('div');
+        g2.appendChild(el('div','nom', ligne.n || ''));
+        if(ligne.s) g2.appendChild(el('div','hint', ligne.s));
+        l.appendChild(g2);
+        if(ligne.v !== undefined) l.appendChild(el('div','pts', String(ligne.v)));
+        r.appendChild(l);
+      });
+      r.appendChild(el('div','hint',
+        'Les points se donnent sur le telephone principal.'));
+      app.appendChild(r);
+    }
+
+    var q = el('button', null, 'Ce n\u2019est pas moi');
+    q.onclick = function(){
+      myClaim = null; S.removeItem(claimKey);
+      intent('leave', {});
+      render(1);
+    };
+    app.appendChild(q);
+  }
+
+  /* NOTRE PART, DESCELLEE. Rendue telle quelle si elle est illisible plutot
+     que de lever : un secret regenere (navigateur vide, autre telephone)
+     donne du charabia, et un ecran vide vaut mieux qu'une page morte. */
+  function privee(){
+    if(!scene || !scene.priv) return null;
+    var sceau = scene.priv[dev];
+    if(!sceau) return null;
+    var brut = ouvrir(secret, sceau);
+    if(!brut) return null;
+    try { return JSON.parse(brut); } catch(e){ return null; }
+  }
+
+  /* UNE FACE DE DE, dessinee en points et pas ecrite en chiffre : c'est ce
+     qu'on reconnait sans lire, et c'est tout l'interet d'un de. */
+  function deFace(v){
+    var f = el('div','de');
+    var n = Math.max(1, Math.min(6, v | 0));
+    /* Les positions classiques, en neuf cases. Le 1 au centre, le 6 en deux
+       colonnes de trois — n'importe quel autre arrangement se lit mal. */
+    var plans = {
+      1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8]
+    };
+    var pts = plans[n];
+    for(var i = 0; i < 9; i++){
+      var c = el('span', pts.indexOf(i) >= 0 ? 'pip on' : 'pip');
+      f.appendChild(c);
+    }
+    if(v > 6 || v < 1){
+      /* Un de a plus de six faces existe (le jeu en propose) : on ecrit
+         alors le chiffre, faute de disposition reconnaissable. */
+      f.innerHTML = '';
+      f.className = 'de chiffre';
+      f.textContent = String(v);
+    }
+    return f;
+  }
+
+  /* ------------------------------------------------------------------
+     LE DESSIN
+
+     UN SEUL ELEMENT `canvas`, cree une fois et deplace d'un ecran a
+     l'autre — jamais recree. Le redessiner reviendrait a effacer l'ardoise
+     dix fois par seconde, et surtout a jeter le calque hors ecran ou sont
+     figes les elements termines.
+     ------------------------------------------------------------------ */
+  var board = null;       // ce qu'on voit
+  var committed = null;   // le calque hors ecran : tout sauf le dernier
+  var painting = false;
+
+  function boardEl(){
+    if(board) return board;
+    board = document.createElement('canvas');
+    board.className = 'board';
+    committed = document.createElement('canvas');
+    return board;
+  }
+
+  /* Le cadre du dessin dans le canvas, aux proportions de l'ardoise du
+     maitre. SANS LUI, un dessin fait sur un ecran etroit s'etalerait en
+     largeur ici : les cercles deviendraient des ovales, et la moitie des
+     dessins seraient impossibles a reconnaitre. */
+  function frame(w, h){
+    return frameFor(w, h, (scene && scene.ar) ? scene.ar : 0);
+  }
+
+  function frameFor(w, h, ar){
+    if(!(ar > 0)) ar = w / h;
+    var fw = w, fh = w / ar;
+    if(fh > h){ fh = h; fw = h * ar; }
+    return { x: (w - fw) / 2, y: (h - fh) / 2, w: fw, h: fh };
+  }
+
+  function schedulePaint(){
+    if(painting) return;
+    painting = true;
+    requestAnimationFrame(function(){ painting = false; paintScene(); });
+  }
+
+  function sizeBoard(){
+    if(!board || !board.parentNode) return false;
+    var r = board.parentNode.getBoundingClientRect();
+    /* LA DENSITE DE L'ECRAN, sinon le trait est flou : un telephone affiche
+       deux a trois pixels physiques par pixel CSS, et un canvas dimensionne
+       en pixels CSS se retrouve etire. Plafonnee a 2 — au-dela le gain ne se
+       voit pas et le remplissage, qui parcourt les pixels un par un, coute
+       deux fois plus cher. */
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(1, Math.round(r.width * dpr));
+    var h = Math.max(1, Math.round(Math.min(r.width * 1.25, window.innerHeight * 0.62) * dpr));
+    if(board.width !== w || board.height !== h){
+      board.width = w; board.height = h;
+      board.style.height = Math.round(h / dpr) + 'px';
+      committed.width = w; committed.height = h;
+      /* La taille a change : tout ce qui etait fige l'etait a l'ancienne
+         echelle. On refige. */
+      sceneDone = 0;
+      repaintDone();
+    }
+    return true;
+  }
+
+  /* Fige sur le calque hors ecran tous les elements sauf le dernier.
+     POURQUOI CE CALQUE : un remplissage se calcule en parcourant les pixels
+     un par un. Le rejouer a chaque image, soixante fois par seconde, ferait
+     ramer le telephone pour un resultat rigoureusement identique. */
+  function repaintDone(){
+    if(!committed) return;
+    var g = committed.getContext('2d');
+    var f = frame(committed.width, committed.height);
+    for(var i = sceneDone; i < sceneItems.length - 1; i++){
+      drawItem(g, sceneItems[i], f, committed);
+    }
+    sceneDone = Math.max(0, sceneItems.length - 1);
+  }
+
+  function paintScene(){
+    if(!sizeBoard()) return;
+    repaintDone();
+    var g = board.getContext('2d');
+    g.clearRect(0, 0, board.width, board.height);
+    g.drawImage(committed, 0, 0);
+    if(sceneItems.length){
+      drawItem(g, sceneItems[sceneItems.length - 1],
+               frame(board.width, board.height), board);
+    }
+  }
+
+  function drawItem(g, it, f, target){
+    if(!it) return;
+    if(it.t === 'f'){ floodFill(g, it, f, target); return; }
+    var pts = parsePoints(it.p);
+    if(!pts.length) return;
+    g.save();
+    /* LA GOMME CREUSE, elle ne peint pas en noir : le fond de l'ardoise ici
+       est la page elle-meme, et un trait noir laisserait une trainee sombre
+       la ou il devrait n'y avoir rien. C'est le pendant exact du
+       `BlendMode.clear` cote application. */
+    g.globalCompositeOperation = it.e ? 'destination-out' : 'source-over';
+    g.strokeStyle = it.c || '#ffffff';
+    g.fillStyle = it.c || '#ffffff';
+    g.lineWidth = Math.max(1, (it.w || 0.01) * f.w);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    var X = function(i){ return f.x + pts[i][0] * f.w; };
+    var Y = function(i){ return f.y + pts[i][1] * f.h; };
+    if(pts.length === 1){
+      g.beginPath();
+      g.arc(X(0), Y(0), g.lineWidth / 2, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+      return;
+    }
+    /* MEME LISSAGE QUE COTE APPLICATION — des quadratiques entre les milieux
+       de segments. Relier les points a la regle donnerait un trait en dents
+       de scie sur un trace rapide, et surtout un dessin qui ne ressemble pas
+       a celui que le dessinateur a sous les yeux. */
+    g.beginPath();
+    g.moveTo(X(0), Y(0));
+    for(var i = 1; i < pts.length - 1; i++){
+      g.quadraticCurveTo(X(i), Y(i), (X(i) + X(i+1)) / 2, (Y(i) + Y(i+1)) / 2);
+    }
+    g.lineTo(X(pts.length - 1), Y(pts.length - 1));
+    g.stroke();
+    g.restore();
+  }
+
+  function parsePoints(p){
+    if(!p) return [];
+    var out = [], parts = p.split(' ');
+    for(var i = 0; i < parts.length; i++){
+      var c = parts[i].split(',');
+      if(c.length !== 2) continue;
+      var x = parseInt(c[0], 10), y = parseInt(c[1], 10);
+      if(isNaN(x) || isNaN(y)) continue;
+      out.push([x / 1000, y / 1000]);
+    }
+    return out;
+  }
+
+  /* LE POT DE PEINTURE, REJOUE.
+
+     Le maitre nous a envoye l'endroit et la couleur, pas la zone : celle-ci
+     n'a aucune description geometrique simple — c'est « tout ce qui est de
+     la meme couleur et connexe ». On refait donc l'etalement ici, sur les
+     memes traits, depuis le meme point. Le resultat n'est pas au pixel pres
+     celui du telephone maitre (les deux ecrans n'ont pas la meme
+     definition), et ça n'a aucune importance : c'est la meme zone. */
+  function floodFill(g, it, f, target){
+    var w = target.width, h = target.height;
+    if(w < 2 || h < 2) return;
+    var x0 = Math.round(f.x + (it.x / 1000) * f.w);
+    var y0 = Math.round(f.y + (it.y / 1000) * f.h);
+    if(x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) return;
+    var img, px;
+    try {
+      img = g.getImageData(0, 0, w, h);
+      px = img.data;
+    } catch(e){ return; }          // canvas souille : on renonce sans bruit
+
+    var col = hexToRgb(it.c) || [255, 255, 255];
+    var start = (y0 * w + x0) * 4;
+    var sr = px[start], sg = px[start+1], sb = px[start+2], sa = px[start+3];
+    /* Deja de la bonne couleur : sans cette sortie, l'etalement repeindrait
+       a l'identique en parcourant toute la zone pour rien. */
+    if(sa === 255 && sr === col[0] && sg === col[1] && sb === col[2]) return;
+
+    var TOL = 28;                  // la meme tolerance que cote application
+    var seen = new Uint8Array(w * h);
+    var pile = [y0 * w + x0];
+    seen[y0 * w + x0] = 1;
+    while(pile.length){
+      var idx = pile.pop();
+      var o = idx * 4;
+      px[o] = col[0]; px[o+1] = col[1]; px[o+2] = col[2]; px[o+3] = 255;
+      var cx = idx % w, cy = (idx - cx) / w;
+      var vois = [
+        cx > 0 ? idx - 1 : -1,
+        cx < w - 1 ? idx + 1 : -1,
+        cy > 0 ? idx - w : -1,
+        cy < h - 1 ? idx + w : -1
+      ];
+      for(var k = 0; k < 4; k++){
+        var n = vois[k];
+        /* MARQUE A L'EMPILEMENT, pas au depilement : sans ça un meme pixel
+           entre quatre fois dans la pile, et une ardoise vide fait exploser
+           la memoire avant d'avoir fini. */
+        if(n < 0 || seen[n]) continue;
+        var q = n * 4;
+        if(Math.abs(px[q] - sr) > TOL || Math.abs(px[q+1] - sg) > TOL ||
+           Math.abs(px[q+2] - sb) > TOL || Math.abs(px[q+3] - sa) > TOL) continue;
+        seen[n] = 1;
+        pile.push(n);
+      }
+    }
+    g.putImageData(img, 0, 0);
+  }
+
+  function hexToRgb(h){
+    if(typeof h !== 'string') return null;
+    var m = /^#?([0-9a-f]{6})$/i.exec(h.trim());
+    if(!m) return null;
+    var v = parseInt(m[1], 16);
+    return [(v >> 16) & 255, (v >> 8) & 255, v & 255];
+  }
+
+  /* LE PANNEAU DES REGLAGES.
+
+     Il ne se reconstruit qu'a l'ouverture : rien dedans ne depend de l'etat
+     du salon seconde par seconde, et le rebatir a chaque etat recu casserait
+     le geste en cours, comme partout ailleurs sur cette page. */
+  var panneauP = document.getElementById('param');
+  var corpsP = document.getElementById('paramCorps');
+
+  document.getElementById('reglages').onclick = function(){ ouvrirParam(); };
+  document.getElementById('retourP').onclick = function(){ fermerParam(); };
+
+  function ouvrirParam(){
+    /* LE RETOUR DU TELEPHONE FERME LE PANNEAU, il ne quitte pas le salon.
+       Meme mecanique que pour les cartes et la messagerie : sans elle, un
+       invite qui ouvre les reglages en pleine partie et appuie sur retour
+       sort de la page et doit refaire tout le parcours d'entree. */
+    try{ history.pushState({ pivvy: 'param' }, ''); }catch(e){}
+    corpsP.innerHTML = '';
+
+    var t = el('div','card');
+    t.appendChild(el('div','lbl','Apparence de cette page'));
+    var wrap = el('div','themes');
+    Object.keys(THEMES).forEach(function(name){
+      var b = el('button',null,name.charAt(0).toUpperCase()+name.slice(1));
+      b.onclick = function(){ applyTheme(name); };
+      wrap.appendChild(b);
+    });
+    t.appendChild(wrap);
+    corpsP.appendChild(t);
+
+    /* « CE N'EST PAS MOI » N'A DE SENS QUE SI ON EST QUELQU'UN, et il est
+       ici plutot que sous le nom du joueur : c'est un bouton d'abandon, il
+       n'a rien a faire a portee de pouce pendant toute la soiree. */
+    var tenu = myClaim || (state && state.claims && state.claims[dev]);
+    if(tenu){
+      var c = el('div','card');
+      c.appendChild(el('div','lbl','Ce joueur'));
+      c.appendChild(el('div','hint',
+        'Rend ta place a la table : quelqu’un d’autre pourra la prendre.'));
+      var q = el('button',null,'Ce n’est pas moi');
+      q.onclick = function(){
+        myClaim = null; S.removeItem(claimKey);
+        intent('leave',{});
+        fermerParam();
+        render(1);
+      };
+      c.appendChild(q);
+      corpsP.appendChild(c);
+    }
+
+    var info = el('div','card');
+    info.appendChild(el('div','lbl','Cette page'));
+    info.appendChild(el('div','hint','Version ' + PAGE_VERSION
+      + (state && state.pv && state.pv !== PAGE_VERSION
+          ? ' — le salon en attend une plus recente (' + state.pv + ').'
+          : ' — a jour.')));
+    if(CONFIG.mode !== 'lan'){
+      info.appendChild(el('div','hint','Dernier envoi : ' + dernierEnvoi));
+    }
+    info.appendChild(el('div','hint','Appareil : ' + dev));
+    corpsP.appendChild(info);
+
+    panneauP.hidden = false;
+  }
+
+  /* `viaRetour` distingue les deux façons de refermer : le bouton fleche
+     doit DEPILER l'entree d'historique qu'on a posee, le retour du telephone
+     l'a deja depilee. Sans ça, chaque ouverture-fermeture laissait une entree
+     derriere elle et il fallait appuyer cinq fois sur retour pour sortir. */
+  function fermerParam(viaRetour){
+    var etait = !panneauP.hidden;
+    panneauP.hidden = true;
+    if(etait && !viaRetour){
+      try{ history.back(); }catch(e){}
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     LE FORMULAIRE
+
+     Un bloc de scene generique : le maitre decrit des champs, l'invite les
+     remplit, et la reponse repart en une intention `act`. Le salon ne
+     comprend rien a ce qu'il transporte — c'est la meme regle que pour les
+     cartes, et c'est ce qui permet d'ajouter un jeu sans y toucher.
+
+     `form.id` change a chaque manche : c'est lui qui distingue « je n'ai pas
+     encore repondu » de « j'ai repondu ». Sans identifiant, la page ne
+     saurait pas si le formulaire affiche est le meme qu'il y a dix secondes.
+     ------------------------------------------------------------------ */
+  var panneauF = document.getElementById('form');
+  var corpsF = document.getElementById('corpsF');
+  var titreF = document.getElementById('titreF');
+  var formVu = null;        // l'identifiant du formulaire actuellement bati
+  var formEnvoye = null;    // celui auquel on a deja repondu
+  var formChamps = {};      // ce qui est saisi, pour survivre a un redessin
+
+  document.getElementById('retourF').onclick = function(){ fermerForm(); };
+
+  /* LE FORMULAIRE EN COURS, PUBLIC OU PRIVE.
+     Il peut etre prive, et pour le telephone arabe il DOIT l'etre : chacun
+     recoit un maillon different, et deux invites qui verraient le meme
+     n'auraient plus rien a deviner. On regarde donc d'abord la part chiffree
+     qui nous est destinee — le meme mecanisme que les roles du Loup-Garou —
+     puis, a defaut, le formulaire public, qui sert aux jeux ou tout le monde
+     repond a la meme question (le petit bac).
+
+     CETTE FONCTION EST PARTAGEE avec le rendu de `#app`, et c'est tout son
+     interet : le bouton qui ouvre le panneau ne lisait QUE le formulaire
+     public. Un formulaire prive etait donc bati, jamais montre, et sans
+     `auto` il n'existait pour personne — le jeu entier restait a
+     « 0 / 5 ont rendu ». */
+  function formActuel(){
+    var tenu = myClaim || (state && state.claims && state.claims[dev]);
+    if(!tenu) return null;
+    var mien = privee();
+    if(mien && mien.form) return mien.form;
+    return scene ? scene.form : null;
+  }
+
+  function majForm(){
+    var f = formActuel();
+
+
+    /* PLUS DE FORMULAIRE : on referme. Ça arrive quand la manche se termine
+       ou que le jeu change, et l'invite ne doit pas rester devant des champs
+       que plus personne n'attend. */
+    if(!f || !f.id){
+      if(!panneauF.hidden) fermerForm();
+      formVu = null;
+      return;
+    }
+
+    /* DEJA REPONDU : on ne repropose rien. On ne referme pas non plus tout
+       seul si l'invite a rouvert le panneau — il a le droit de relire ce
+       qu'il a envoye. */
+    if(f.id === formEnvoye){
+      if(!panneauF.hidden && formVu === f.id) majChronoForm(f);
+      return;
+    }
+
+    if(formVu !== f.id){
+      formVu = f.id;
+      formChamps = {};
+      batirForm(f);
+      if(f.auto) ouvrirForm();
+    } else {
+      majChronoForm(f);
+    }
+  }
+
+  /* LE CHRONO SE MET A JOUR SANS RECONSTRUIRE LE FORMULAIRE. C'est tout
+     l'interet de le tenir a part : un decompte qui redessine ses champs
+     efface la frappe en cours. */
+  function majChronoForm(f){
+    var c = document.getElementById('chronoF');
+    if(!c) return;
+    if(f.left === undefined || f.left === null){ c.textContent = ''; return; }
+    c.textContent = String(f.left);
+    if(f.left <= 5){ c.className = 'chrono court'; } else { c.className = 'chrono'; }
+  }
+
+  /* ------------------------------------------------------------------
+     L'ARDOISE DE L'INVITE
+
+     Jusqu'ici le dessin allait dans un seul sens : le maitre tracait, les
+     invites regardaient. Le telephone arabe demande l'inverse, et sur tous
+     les telephones a la fois.
+
+     CE QUI VOYAGE, CE SONT LES TRAITS, PAS L'IMAGE. Meme format que dans
+     l'autre sens — des points en milliemes, une couleur, une epaisseur — et
+     donc la meme regle du §8 : aucune image ne passe par le salon. Un dessin
+     complet fait quelques kilo-octets de texte, ce qu'un canal de diffusion
+     transporte sans broncher.
+     ------------------------------------------------------------------ */
+  var croquis = null;       // le canvas
+  var traits = [];          // ce qui a ete trace
+  var traitEnCours = null;
+  var couleurC = '#ffffff';
+  var epaisseurC = 0.012;
+
+  var PALETTE = ['#ffffff', '#FF6B6B', '#FFD166', '#4FD68A', '#5AB0FF',
+                 '#C084FF', '#111111'];
+
+  function batirCroquis(f, hote){
+    traits = [];
+    traitEnCours = null;
+    couleurC = PALETTE[0];
+
+    croquis = document.createElement('canvas');
+    croquis.className = 'croquis';
+    var cadre = el('div','slate');
+    cadre.appendChild(croquis);
+    hote.appendChild(cadre);
+
+    // La palette, l'annulation, l'effacement.
+    var barre = el('div','outils');
+    PALETTE.forEach(function(c){
+      var b = document.createElement('button');
+      b.className = 'pot';
+      b.style.background = c;
+      b.onclick = function(){
+        couleurC = c;
+        majPots();
+      };
+      b.setAttribute('data-c', c);
+      barre.appendChild(b);
+    });
+    var annuler = el('button','outil','↶');
+    annuler.onclick = function(){
+      traits.pop();
+      peindreCroquis();
+    };
+    barre.appendChild(annuler);
+    var vider = el('button','outil','✕');
+    vider.onclick = function(){
+      traits = [];
+      peindreCroquis();
+    };
+    barre.appendChild(vider);
+    hote.appendChild(barre);
+    majPots();
+
+    brancherDoigt(f);
+    // Le canvas n'a sa taille qu'une fois dans le document.
+    setTimeout(peindreCroquis, 0);
+    window.addEventListener('resize', peindreCroquis);
+  }
+
+  function majPots(){
+    var pots = document.querySelectorAll('#form .pot');
+    for(var i = 0; i < pots.length; i++){
+      pots[i].className = pots[i].getAttribute('data-c') === couleurC
+        ? 'pot actif' : 'pot';
+    }
+  }
+
+  function cadreCroquis(){
+    return frameFor(croquis.width, croquis.height, ARDOISE);
+  }
+
+  /* LES PROPORTIONS DE L'ARDOISE SONT FIXEES ICI, ET C'EST NECESSAIRE.
+     Un dessin fait sur un telephone etroit et rejoue sur un ecran large
+     s'etalerait : les cercles deviendraient des ovales et la moitie des
+     dessins seraient impossibles a reconnaitre. Tout le monde dessine donc
+     dans le meme rectangle, quelle que soit la taille de son ecran. */
+  var ARDOISE = 0.75;
+
+  function brancherDoigt(f){
+    function pos(ev){
+      var r = croquis.getBoundingClientRect();
+      var t = (ev.touches && ev.touches[0]) ? ev.touches[0] : ev;
+      var dpr = croquis.width / r.width;
+      var c = cadreCroquis();
+      var x = ((t.clientX - r.left) * dpr - c.x) / c.w;
+      var y = ((t.clientY - r.top) * dpr - c.y) / c.h;
+      return [Math.round(Math.max(0, Math.min(1, x)) * 1000),
+              Math.round(Math.max(0, Math.min(1, y)) * 1000)];
+    }
+    function debut(ev){
+      ev.preventDefault();
+      var p = pos(ev);
+      traitEnCours = { t: 's', c: couleurC, w: epaisseurC,
+                       p: p[0] + ',' + p[1] };
+      traits.push(traitEnCours);
+      peindreCroquis();
+    }
+    function bouge(ev){
+      if(!traitEnCours) return;
+      ev.preventDefault();
+      var p = pos(ev);
+      /* ON NE GARDE PAS TOUS LES POINTS. Un doigt en produit soixante par
+         seconde ; a deux points par pixel le trait ne change pas d'aspect et
+         le message triple de taille. On saute ce qui n'a pas bouge. */
+      var q = traitEnCours.p.split(' ');
+      var d = q[q.length - 1].split(',');
+      if(Math.abs(p[0] - d[0]) + Math.abs(p[1] - d[1]) < 6) return;
+      traitEnCours.p += ' ' + p[0] + ',' + p[1];
+      peindreCroquis();
+    }
+    function fin(){ traitEnCours = null; }
+
+    croquis.addEventListener('touchstart', debut, { passive: false });
+    croquis.addEventListener('touchmove', bouge, { passive: false });
+    croquis.addEventListener('touchend', fin);
+    croquis.addEventListener('touchcancel', fin);
+    croquis.addEventListener('mousedown', debut);
+    croquis.addEventListener('mousemove', bouge);
+    window.addEventListener('mouseup', fin);
+  }
+
+  /* Une ardoise en lecture seule : le maillon qu'on doit interpreter. */
+  function peindreVue(cv, items){
+    if(!cv.parentNode) return;
+    var r = cv.parentNode.getBoundingClientRect();
+    if(r.width < 2){ setTimeout(function(){ peindreVue(cv, items); }, 60); return; }
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(1, Math.round(r.width * dpr));
+    var h = Math.max(1, Math.round(Math.min(r.width / ARDOISE,
+                                            window.innerHeight * 0.45) * dpr));
+    cv.width = w; cv.height = h;
+    cv.style.height = Math.round(h / dpr) + 'px';
+    var g = cv.getContext('2d');
+    g.clearRect(0, 0, w, h);
+    var c = frameFor(w, h, ARDOISE);
+    for(var i = 0; i < items.length; i++){
+      drawItem(g, items[i], c, cv);
+    }
+  }
+
+  function peindreCroquis(){
+    if(!croquis || !croquis.parentNode) return;
+    var r = croquis.parentNode.getBoundingClientRect();
+    if(r.width < 2) return;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = Math.max(1, Math.round(r.width * dpr));
+    var h = Math.max(1, Math.round(Math.min(r.width / ARDOISE,
+                                            window.innerHeight * 0.5) * dpr));
+    if(croquis.width !== w || croquis.height !== h){
+      croquis.width = w; croquis.height = h;
+      croquis.style.height = Math.round(h / dpr) + 'px';
+    }
+    var g = croquis.getContext('2d');
+    g.clearRect(0, 0, w, h);
+    var c = cadreCroquis();
+    // Le cadre utile, pour qu'on voie ou l'on a le droit de dessiner.
+    g.save();
+    g.strokeStyle = 'rgba(255,255,255,.18)';
+    g.lineWidth = 1;
+    g.strokeRect(c.x, c.y, c.w, c.h);
+    g.restore();
+    for(var i = 0; i < traits.length; i++){
+      drawItem(g, traits[i], c, croquis);
+    }
+  }
+
+  function batirForm(f){
+    /* ON LACHE L'ARDOISE PRECEDENTE. `innerHTML = ''` retire le canvas du
+       document mais pas l'ecouteur de redimensionnement qu'on lui a attache
+       sur `window` : sans ce retrait, chaque manche en ajoutait un, et au
+       bout de dix manches un simple pivotement de telephone rejouait dix
+       peintures sur des canvas morts. */
+    if(croquis){
+      window.removeEventListener('resize', peindreCroquis);
+      croquis = null;
+      traits = [];
+      traitEnCours = null;
+    }
+    corpsF.innerHTML = '';
+    titreF.textContent = f.titre || 'Ta reponse';
+
+    if(f.sous) corpsF.appendChild(el('div','hint', f.sous));
+    if(f.big){
+      var g = el('div','card');
+      if(f.bigLbl) g.appendChild(el('div','lbl', f.bigLbl));
+      g.appendChild(el('div','big', f.big));
+      corpsF.appendChild(g);
+    }
+
+    /* CE QU'IL Y A A REGARDER : le dessin du maillon precedent. Il est en
+       LECTURE SEULE et pose au-dessus de la reponse — on regarde, puis on
+       ecrit. Le meme rendu que l'ardoise du salon, avec le meme cadre :
+       c'est ce qui garantit qu'on voit exactement ce que l'autre a trace, et
+       pas une version etiree. */
+    if(f.it && f.it.length){
+      var vu = document.createElement('canvas');
+      vu.className = 'croquis';
+      var cadreVu = el('div','slate');
+      cadreVu.appendChild(vu);
+      corpsF.appendChild(cadreVu);
+      setTimeout(function(){ peindreVue(vu, f.it); }, 0);
+    }
+    var chrono = el('div','chrono'); chrono.id = 'chronoF';
+    corpsF.appendChild(chrono);
+    majChronoForm(f);
+
+    /* LE DESSIN : le formulaire porte une ardoise au lieu de champs. Les
+       deux ne se melangent pas — on ecrit OU l'on dessine, jamais les deux :
+       c'est la regle du jeu, et un ecran qui proposerait les deux ferait
+       hesiter au moment ou le chrono tourne. */
+    if(f.dessin){
+      batirCroquis(f, corpsF);
+    }
+
+    var champs = f.dessin ? [] : (f.champs || []);
+    champs.forEach(function(ch){
+      var c = el('div','card');
+      c.appendChild(el('div','lbl', ch.lbl || ch.k));
+      var i = el('input'); i.type = 'text'; i.maxLength = 40;
+      i.value = formChamps[ch.k] || '';
+      i.oninput = function(){ formChamps[ch.k] = i.value; };
+      i.onblur = function(){ lastBlur = Date.now(); };
+      c.appendChild(i);
+      corpsF.appendChild(c);
+    });
+
+    var b = el('button','primary', f.btn || 'Envoyer');
+    b.onclick = function(){
+      var msg = { a: 'form', f: f.id };
+      if(f.dessin){
+        /* UN DESSIN VIDE N'EST PAS UNE REPONSE. On le laisse partir quand
+           meme — le chrono peut finir avant l'idee — mais le jeu doit pouvoir
+           le distinguer d'une absence de reponse, d'ou la liste vide plutot
+           que rien du tout. */
+        msg.it = traits;
+      } else {
+        var v = {};
+        champs.forEach(function(ch){
+          v[ch.k] = (formChamps[ch.k] || '').trim();
+        });
+        msg.v = v;
+      }
+      formEnvoye = f.id;
+      intent('act', msg);
+      fermerForm();
+      render(1);
+    };
+    corpsF.appendChild(b);
+  }
+
+  function ouvrirForm(){
+    if(!panneauF.hidden) return;
+    try{ history.pushState({ pivvy: 'form' }, ''); }catch(e){}
+    panneauF.hidden = false;
+  }
+
+  function fermerForm(viaRetour){
+    var etait = !panneauF.hidden;
+    panneauF.hidden = true;
+    if(etait && !viaRetour){
+      try{ history.back(); }catch(e){}
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     LA MESSAGERIE
+
+     Elle sert moins qu'on ne croit a se parler — on est dans la meme piece —
+     et beaucoup a ce que la piece ne permet pas : dire quelque chose sans le
+     dire a voix haute pendant qu'un autre mime.
+
+     ELLE N'A AUCUN ETAT PROPRE. Le maitre rediffuse les quarante dernieres
+     lignes avec l'etat, toutes les deux secondes : celui qui rate un message
+     a le suivant, un rechargement ne perd rien, et il n'y a ni accuse de
+     reception ni numero d'ordre a tenir. On ne fait ici qu'AJOUTER ce qui
+     n'y est pas encore, jamais tout redessiner — c'est ce qui garde le champ
+     de saisie et le clavier en vie.
+     ------------------------------------------------------------------ */
+  var bulle = document.getElementById('bulle');
+  var pastille = document.getElementById('pastille');
+  var panneau = document.getElementById('tchat');
+  var lignes = document.getElementById('lignes');
+  var champ = document.getElementById('motxt');
+  var vus = 0;              // le plus grand identifiant deja affiche
+  var lus = 0;              // ...et deja VU par l'utilisateur
+  var ouvertTchat = false;
+
+  function majTchat(){
+    var liste = (state && state.chat) ? state.chat : [];
+    /* LA BULLE N'APPARAIT QUE S'IL Y A QUELQU'UN A QUI PARLER. Seul dans le
+       salon, elle n'est qu'un bouton qui encombre un coin de l'ecran. */
+    var utile = !!state && !!(myClaim || (state.claims && state.claims[dev]));
+    bulle.hidden = !utile;
+    if(!utile){ panneau.hidden = true; ouvertTchat = false; return; }
+
+    var neuf = false;
+    liste.forEach(function(l){
+      if(!l || l.i <= vus) return;
+      vus = l.i;
+      neuf = true;
+      var m = el('div','msg');
+      var b = document.createElement('b');
+      b.textContent = l.w || '';
+      m.appendChild(b);
+      m.appendChild(document.createTextNode(l.t || ''));
+      lignes.appendChild(m);
+    });
+    if(neuf && ouvertTchat){
+      lus = vus;
+      /* On ne descend que si l'utilisateur etait DEJA en bas : le tirer vers
+         le bas alors qu'il relit un message plus haut est le genre de detail
+         qui rend une messagerie desagreable. */
+      lignes.scrollTop = lignes.scrollHeight;
+    }
+    pastille.hidden = (vus <= lus);
+    if(!liste.length && !lignes.querySelector('.vide')){
+      lignes.appendChild(el('div','vide',
+        'Rien pour l’instant. Ecris quelque chose.'));
+    } else if(liste.length){
+      var vide = lignes.querySelector('.vide');
+      if(vide) vide.remove();
+    }
+  }
+
+  function ouvrirTchat(){
+    ouvertTchat = true;
+    panneau.hidden = false;
+    lus = vus; pastille.hidden = true;
+    lignes.scrollTop = lignes.scrollHeight;
+    /* LE BOUTON RETOUR DU TELEPHONE DOIT FERMER LA FENETRE, pas quitter la
+       page. Une entree d'historique posee ici, retiree en refermant : c'est
+       la seule façon d'attraper un geste que le navigateur ne nous confie
+       pas autrement. */
+    try { history.pushState({ tchat: 1 }, ''); } catch(e){}
+  }
+
+  function fermerTchat(parHistorique){
+    if(!ouvertTchat) return;
+    ouvertTchat = false;
+    panneau.hidden = true;
+    lus = vus; pastille.hidden = true;
+    if(!parHistorique){ try { history.back(); } catch(e){} }
+  }
+
+  bulle.onclick = ouvrirTchat;
+  document.getElementById('retour').onclick = function(){ fermerTchat(false); };
+  window.addEventListener('popstate', function(){
+    /* UNE SEULE ENTREE D'HISTORIQUE A LA FOIS : les trois fenetres en posent
+       une en s'ouvrant, et le bouton retour du telephone doit refermer celle
+       qui est ouverte — pas quitter la page. */
+    fermerTchat(true);
+    fermerJeu(true);
+    fermerParam(true);
+    fermerForm(true);
+  });
+
+  function envoyer(){
+    var texte2 = champ.value.trim();
+    if(!texte2) return;
+    champ.value = '';
+    /* PAS D'AFFICHAGE OPTIMISTE. On n'ajoute pas la ligne soi-meme : elle
+       revient avec l'etat, avec le nom que le MAITRE nous attribue. L'ecrire
+       d'avance donnerait un message affiche deux fois quand tout va bien, et
+       un message affiche qui n'existe pour personne quand le mot de passe est
+       faux. */
+    intent('chat', { text: texte2 });
+    champ.focus();
+  }
+  document.getElementById('envoi').onclick = envoyer;
+  champ.addEventListener('keydown', function(e){
+    if(e.key === 'Enter'){ e.preventDefault(); envoyer(); }
+  });
+
+  /* ------------------------------------------------------------------
+     LES EFFETS : FAIRE VOIR, SANS FAIRE ENTENDRE
+
+     LA VIBRATION A ETE ESSAYEE PUIS RETIREE, et la raison merite d'etre
+     ecrite : un telephone qui vibre s'ENTEND. Meme en faisant vibrer tout le
+     monde en meme temps pour ne trahir personne, le resultat etait pire que
+     le probleme — huit telephones qui bourdonnent au milieu d'une nuit ou
+     l'on chuchote, et la moitie de la table qui se demande si c'est a elle
+     de se reveiller. Un jeu ou l'on ferme les yeux se joue en SILENCE.
+
+     Il ne reste donc que **l'ecran**, et c'est tres bien ainsi : un aplat de
+     couleur par-dessus la page, aucune permission, aucune limite, iPhone
+     compris. Dans une piece sombre, un telephone qui vire au blanc puis au
+     rouge se voit de l'autre bout de la table.
+
+     LA LAMPE TORCHE A ETE ECRITE PUIS RETIREE, elle aussi. Il n'existe aucune
+     API « lampe » sur le web : il faut ouvrir un flux de la CAMERA et allumer
+     son flash — donc demander l'autorisation d'acceder a la camera, avec le
+     mot ecrit dedans, et laisser le voyant de confidentialite allume toute la
+     partie. Pour huit invites, dans une soiree, c'est un mauvais echange. Et
+     ça ne marchait ni sur iPhone (Safari ignore la contrainte `torch`) ni en
+     Wi-Fi local (`getUserMedia` est interdit sur une origine `http://`).
+     Beaucoup de conditions pour un peu de lumiere de plus.
+
+     ------------------------------------------------------------------ */
+  var fxVus = 0;
+  var flashDiv = null;
+
+  /* UN APLAT PLEIN ECRAN, pose une fois et reutilise. Le recreer a chaque
+     fois obligerait le navigateur a recalculer la page au moment precis ou
+     l'on veut qu'il dessine vite. */
+  function flasher(couleur, fois){
+    if(!flashDiv){
+      flashDiv = document.createElement('div');
+      flashDiv.id = 'flash';
+      document.body.appendChild(flashDiv);
+    }
+    var n = fois || 3;
+    var d = flashDiv;
+    var i = 0;
+    /* ON COMMENCE PAR DU BLANC. C'est ce qui se voit de loin : un ecran de
+       telephone n'a pas de reglage de luminosite accessible depuis une page,
+       et le blanc plein est le plus lumineux qu'on puisse afficher. Le rouge
+       vient ensuite, pour dire de quoi il s'agit. */
+    (function battre(){
+      if(i >= n * 2){ d.style.opacity = '0'; return; }
+      if(i % 2 === 0){
+        d.style.background = (i === 0) ? '#FFFFFF' : couleur;
+        d.style.opacity = '1';
+      } else {
+        d.style.opacity = '0';
+      }
+      i++;
+      setTimeout(battre, i % 2 === 0 ? 190 : 150);
+    })();
+  }
+
+  /* Joue un effet, s'il est nouveau.
+
+     LE NUMERO D'ORDRE EST LE COEUR DE CETTE FONCTION. L'etat et la scene sont
+     rediffuses toutes les deux secondes : sans lui, un telephone clignoterait
+     sans discontinuer pendant toute la nuit. */
+  function jouerEffet(fx){
+    if(!fx || typeof fx.n !== 'number' || fx.n <= fxVus) return;
+    fxVus = fx.n;
+    if(fx.k === 'mort'){
+      flasher('#B3261E', 3);
+    }
+  }
+
+  /* ------------------------------------------------------------------
+     LA MAIN : LES CARTES DU MODE SOIREE
+
+     LE POINT DE TOUT L'EXERCICE : jouer une carte sans que la table le voie
+     venir. Un Bouclier sorti sur le telephone principal, c'est se lever,
+     traverser la piece et annoncer son coup avant de le jouer — autant ne
+     pas l'avoir. Ici, ça se fait dans la poche.
+
+     CE QUI N'EST PAS PRIVE, EN REVANCHE, C'EST L'EFFET. Une carte qui annule
+     une gorgee change le tableau : le maitre l'annonce a tout le monde des
+     qu'elle est jouee. Le choix est cache, le resultat non — sinon ce
+     ne serait plus une carte, ce serait une triche.
+
+     ON NE JOUE PAS SOI-MEME, ON DEMANDE. La page envoie une intention ; le
+     maitre verifie que la carte est bien dans NOTRE main — il resout le
+     joueur d'apres l'appareil, pas d'apres le message — puis l'applique. Un
+     invite qui reclamerait le Bouclier de son voisin n'obtient rien.
+     ------------------------------------------------------------------ */
+  var bJeu = document.getElementById('cartes');
+  var pastilleC = document.getElementById('pastilleC');
+  var panneauC = document.getElementById('jeu');
+  var mainC = document.getElementById('mainC');
+  var ouvertJeu = false;
+
+  /* CE QUE LA FENETRE MONTRE : la liste, le choix d'une cible, ou le champ du
+     Joker. Sans cette distinction, l'etat recu toutes les deux secondes
+     remettait la LISTE a la place du sous-ecran — le texte tape s'effaçait,
+     et surtout le doigt qui visait « Lea » dans le choix de la cible tombait
+     sur un bouton de carte apparu entretemps. Une carte partait toute seule.
+     C'est la meme faute que le clavier qui se referme, sous un autre
+     deguisement : reconstruire ce que quelqu'un est en train de toucher. */
+  var modeC = 'liste';
+
+  /* La main telle qu'elle est DESSINEE. On ne redessine que si elle a
+     vraiment change : le maitre rediffuse la meme toutes les deux secondes. */
+  var signeC = '';
+
+  /* Notre poche, descellee. Meme mecanique que la part privee de la scene :
+     le maitre la brouille avec le secret de cet appareil, et le canal la
+     diffuse a tous — qui n'en font rien. */
+  function poche(){
+    if(!state || !state.pocket) return null;
+    var sceau = state.pocket[dev];
+    if(!sceau) return null;
+    var brut = ouvrir(secret, sceau);
+    if(!brut) return null;
+    try { return JSON.parse(brut); } catch(e){ return null; }
+  }
+
+  function majJeu(){
+    var p = poche();
+    var cartes = (p && p.cards) ? p.cards : [];
+    bJeu.hidden = !p || !cartes.length;
+    if(bJeu.hidden){
+      /* PAR `fermerJeu` ET PAS A LA MAIN. Refermer le panneau sans defaire
+         l'entree d'historique posee en l'ouvrant laissait une pression du
+         bouton retour sans effet visible : le joueur appuyait une seconde
+         fois et quittait la page. Le cas arrive des qu'on joue sa derniere
+         carte. */
+      fermerJeu(false);
+      signeC = '';
+      return;
+    }
+    pastilleC.hidden = false;
+    pastilleC.textContent = String(cartes.length);
+    if(!ouvertJeu || modeC !== 'liste') return;
+    var signe = JSON.stringify(p);
+    if(signe === signeC) return;
+    signeC = signe;
+    dessineMain(p);
+  }
+
+  function dessineMain(p){
+    modeC = 'liste';
+    signeC = JSON.stringify(p);
+    mainC.innerHTML = '';
+    if(p.last){
+      mainC.appendChild(el('div','banner',
+        'Tu peux repondre a : ' + p.last));
+    }
+    if(p.armed){
+      mainC.appendChild(el('div','banner',
+        'Attention : ta prochaine sanction compte double.'));
+    }
+    (p.cards || []).forEach(function(c){
+      var b = el('button','carte');
+      b.appendChild(el('span','em', c.e || '🃏'));
+      var g = el('div');
+      g.appendChild(el('div','nom', c.n || ''));
+      g.appendChild(el('div','eff', c.x || ''));
+      b.appendChild(g);
+      b.onclick = function(){ jouer(c, p); };
+      mainC.appendChild(b);
+    });
+    mainC.appendChild(el('div','hint',
+      'Le maitre applique la carte et l’annonce a la table. '
+      + 'Ton choix, lui, ne se voit pas.'));
+  }
+
+  /* Jouer une carte : au plus deux questions, et seulement celles que la
+     carte impose. Une confirmation de plus serait une confirmation de trop —
+     on sort un Bouclier dans les trois secondes ou on ne le sort pas. */
+  function jouer(c, p){
+    if(c.t){
+      demander(p.peers || [], function(cible){
+        if(cible) envoiCarte(c, cible, null);
+      });
+      return;
+    }
+    if(c.id === 'joker'){
+      /* PAS DE `prompt` : il bloque la page entiere, ce qui gele le flux
+         d'etat et le chrono derriere. Un champ ordinaire fait la meme chose
+         sans arreter la soiree. */
+      saisirNote(function(note){
+        if(note !== null) envoiCarte(c, null, note);
+      });
+      return;
+    }
+    envoiCarte(c, null, null);
+  }
+
+  function envoiCarte(c, cible, note){
+    intent('act', {
+      a: 'card', id: c.id,
+      target: cible || '',
+      note: note || ''
+    });
+    fermerJeu(false);
+  }
+
+  function saisirNote(suite){
+    modeC = 'note';
+    mainC.innerHTML = '';
+    mainC.appendChild(el('div','lbl','Ton effet, en une phrase'));
+    var i = el('input'); i.type = 'text'; i.maxLength = 120;
+    i.placeholder = 'Ce que la table devra faire';
+    mainC.appendChild(i);
+    var ok = el('button','primary','Jouer le Joker');
+    ok.onclick = function(){ suite(i.value.trim()); };
+    mainC.appendChild(ok);
+    var non = el('button', null, 'Annuler');
+    non.onclick = function(){ suite(null); dessineMain(poche() || {}); };
+    mainC.appendChild(non);
+    setTimeout(function(){ i.focus(); }, 0);
+  }
+
+  /* Le choix de la cible, en pleine page plutot qu'en `prompt` : taper un
+     prenom a la main sur un telephone, sous chrono, c'est une faute de frappe
+     et une carte perdue. */
+  function demander(noms, suite){
+    modeC = 'cible';
+    mainC.innerHTML = '';
+    mainC.appendChild(el('div','lbl','Sur qui ?'));
+    noms.forEach(function(n){
+      var b = el('button', null, n);
+      b.onclick = function(){ suite(n); };
+      mainC.appendChild(b);
+    });
+    var annule = el('button', null, 'Annuler');
+    annule.onclick = function(){ dessineMain(poche() || {}); };
+    mainC.appendChild(annule);
+  }
+
+  function ouvrirJeu(){
+    var p = poche();
+    if(!p) return;
+    ouvertJeu = true;
+    panneauC.hidden = false;
+    dessineMain(p);
+    try { history.pushState({ jeu: 1 }, ''); } catch(e){}
+  }
+
+  function fermerJeu(parHistorique){
+    if(!ouvertJeu) return;
+    ouvertJeu = false;
+    panneauC.hidden = true;
+    if(!parHistorique){ try { history.back(); } catch(e){} }
+  }
+
+  bJeu.onclick = ouvrirJeu;
+  document.getElementById('retourC').onclick = function(){ fermerJeu(false); };
+
+  /* Expose de quoi faire tourner la page hors ligne dans un test :
+     voir `tools/relay_page_check.js`. Aucune incidence en production. */
+  window.__pivvy = {
+    encode: encode, decode: decode, unwrap: unwrap,
+    onMessage: onMessage, render: render,
+    device: function(){ return dev; },
+    tchat: function(){ return { ouvert: ouvertTchat, vus: vus, lus: lus }; },
+    poche: poche,
+
+    sceller: sceller, ouvrir: ouvrir, idDepuis: idDepuis,
+    secret: function(){ return secret; },
+    /* La scene telle que la page la tient : le banc d'essai verifie que les
+       queues recollent, et qu'un trou provoque bien une resynchronisation. */
+    scene: function(){ return { head: scene, items: sceneItems, ep: sceneEpoch }; },
+    peindre: function(){ paintScene(); },
+    HEARTBEAT_MS: HEARTBEAT_MS,
+    PENDING_MS: PENDING_MS,
+    /* Efface ce que la page a retenu de cet appareil. Sert aux essais, qui
+       doivent pouvoir repartir d'un invite qui n'a jamais rien choisi. */
+    oublier: function(){ S.removeItem(claimKey); S.removeItem(passKey); }
+  };
+
+  /* ON BAT AUSSI AU REVEIL, et c'est la moitie de la correction.
+     Un minuteur gele ne rattrape pas son retard : au retour d'un ecran
+     eteint, la page attendrait jusqu'a huit secondes avant de se manifester,
+     alors que c'est precisement l'instant ou le maitre l'a oubliee. Ces
+     trois evenements couvrent les trois façons de revenir : rallumer
+     l'ecran, revenir sur l'onglet, retrouver du reseau. */
+  /* ON EMPECHE L'ECRAN DE S'ETEINDRE.
+     Deux raisons, et la seconde compte plus que la premiere : un ecran eteint
+     ne clignote pas, et un navigateur dont l'ecran s'eteint GELE SES
+     MINUTEURS — c'est la cause du decrochage qu'on a corrige il y a deux
+     tours. Le verrou se perd des qu'on change d'onglet, d'ou la reprise dans
+     `wake`. Non supporte partout ; l'absence n'est pas une panne. */
+  var verrou = null;
+  function tenirEcran(){
+    if(!('wakeLock' in navigator)) return;
+    try {
+      navigator.wakeLock.request('screen').then(function(v){
+        verrou = v;
+        v.addEventListener('release', function(){ verrou = null; });
+      }).catch(function(){});
+    } catch(e){}
+  }
+
+  function wake(){
+    if(!verrou) tenirEcran();
+    if(!joined) return;
+    send('hello', {});
+    reclaim();
+  }
+  document.addEventListener('visibilitychange', function(){
+    if(document.visibilityState === 'visible') wake();
+  });
+  window.addEventListener('focus', wake);
+  window.addEventListener('online', wake);
+
+  render(1);
+  connect();
+  tenirEcran();
+})();
+</script></body></html>

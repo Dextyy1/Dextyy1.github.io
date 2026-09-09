@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pivvy.soiree",
+      "sha256_cert_fingerprints": [
+        "1B:2A:BE:33:FD:8D:60:C5:72:AC:0A:C0:AB:8F:F7:98:74:57:36:EE:4E:C0:47:3E:14:2C:34:F8:FB:AC:AC:6F"
+      ]
+    }
+  }
+]
