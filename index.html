@@ -32,8 +32,14 @@
   .sub{opacity:.6;font-size:13px;margin-bottom:22px}
   .card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
         border-radius:18px;padding:16px;margin-bottom:12px}
+  /* L'INTITULE PEUT ETRE UNE PHRASE. « Une phrase qui tue l'ambiance au
+     lit » est une categorie du petit bac comme une autre : l'intitule doit
+     donc se replier sur plusieurs lignes au lieu de deborder de sa carte.
+     `overflow-wrap` traite en plus le mot unique trop long pour la largeur
+     du telephone, qu'un retour a la ligne normal ne saurait pas couper. */
   .lbl{font-size:11px;letter-spacing:1.4px;text-transform:uppercase;
-       opacity:.55;font-weight:700;margin-bottom:10px}
+       opacity:.55;font-weight:700;margin-bottom:10px;
+       white-space:normal;overflow-wrap:anywhere;line-height:1.35}
   button{font:inherit;color:#fff;background:rgba(255,255,255,.10);border:0;
          border-radius:14px;padding:14px 16px;width:100%;text-align:left;
          margin-bottom:8px;display:flex;align-items:center;gap:10px}
@@ -45,6 +51,20 @@
   input{font:inherit;width:100%;padding:14px;border-radius:14px;border:0;
         background:rgba(255,255,255,.12);color:#fff;margin-bottom:10px}
   input::placeholder{color:rgba(255,255,255,.45)}
+  /* LA CASE A REMPLIR EST UNE ZONE DE TEXTE, PAS UNE LIGNE.
+
+     Une `<input>` ne montre qu'une ligne : passe la largeur du telephone, ce
+     qu'on vient d'ecrire sort par la gauche et on ne peut plus se relire. Or
+     les reponses ne sont pas toutes des mots — certaines categories
+     demandent une phrase, et on les tape sous chrono, donc sans relire
+     ensuite. La zone de texte se replie et grandit avec son contenu
+     (`autoHaut`), et elle garde l'allure d'un champ d'une ligne tant qu'il
+     n'y a qu'une ligne a montrer. */
+  textarea.champ{font:inherit;width:100%;padding:14px;border-radius:14px;
+       border:0;background:rgba(255,255,255,.12);color:#fff;margin-bottom:10px;
+       resize:none;overflow:hidden;display:block;line-height:1.4;
+       min-height:50px;overflow-wrap:anywhere}
+  textarea.champ::placeholder{color:rgba(255,255,255,.45)}
   .me{background:rgba(79,214,138,.16);border:1px solid rgba(79,214,138,.55)}
   .banner{background:rgba(255,154,61,.18);border:1px solid rgba(255,154,61,.6);
           border-radius:16px;padding:14px;margin-bottom:12px;font-weight:600}
@@ -77,6 +97,14 @@
   .nom{font-weight:700}
   .pts{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums;
        flex:0 0 auto}
+  /* UNE VALEUR QUI N'EST PAS UN NOMBRE. Au depouillement du petit bac, la
+     colonne de droite porte la REPONSE, pas des points — « une phrase qui
+     tue l'ambiance » n'est pas « 12 ». Posee dans une colonne qui refuse de
+     retrecir (`flex:0 0 auto`), elle sortait de la carte. Celle-ci se
+     replie, se partage la ligne et se coupe au besoin. */
+  .pts.texte{font-size:15px;flex:1 1 auto;min-width:0;text-align:right;
+       overflow-wrap:anywhere;white-space:normal;line-height:1.35}
+  .row > div:first-child{min-width:0;overflow-wrap:anywhere}
   .dice{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px}
   /* UN DE SE DESSINE EN POINTS, en trois colonnes de trois. On reconnait un
      cinq sans le lire, ce qu'un chiffre ne permet pas. */
@@ -107,6 +135,30 @@
          border:1px solid rgba(255,255,255,.22);z-index:20}
   #pastille{position:absolute;top:6px;right:6px;width:11px;height:11px;
             border-radius:50%;background:#FF6B6B;border:2px solid rgba(10,20,54,.8)}
+  /* L'APERÇU DU DERNIER MESSAGE.
+
+     Une pastille rouge dit qu'il s'est passe quelque chose ; elle ne dit pas
+     QUOI. Pendant une partie, ouvrir la messagerie coute le jeu en cours :
+     on ne le fait pas, donc on ne lit pas, donc la messagerie ne sert a rien.
+     Le message se pose donc a cote de la bulle, en transparence, et s'efface
+     tout seul.
+
+     `pointer-events:none` N'EST PAS UN DETAIL : pose au-dessus de l'ecran de
+     jeu, un bandeau qui avale un appui coute une manche. */
+  #apercu{position:fixed;right:76px;
+          bottom:calc(20px + env(safe-area-inset-bottom));
+          max-width:min(62vw,250px);z-index:19;pointer-events:none;
+          background:rgba(6,12,32,.62);backdrop-filter:blur(8px);
+          border:1px solid rgba(255,255,255,.16);border-radius:14px;
+          padding:9px 12px 10px;
+          opacity:0;transform:translateY(6px);
+          transition:opacity .22s ease,transform .22s ease}
+  #apercu.vu{opacity:1;transform:none}
+  #apercu b{display:block;color:var(--accent);font-size:11px;font-weight:800;
+            letter-spacing:.4px;margin-bottom:1px}
+  #apercu span{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+               overflow:hidden;font-size:13.5px;line-height:1.32;
+               overflow-wrap:anywhere}
   #cartes{position:fixed;right:14px;
           bottom:calc(76px + env(safe-area-inset-bottom));
           width:52px;height:52px;border-radius:50%;padding:0;margin:0;
@@ -117,7 +169,7 @@
              border-radius:9px;background:var(--accent);color:#08102a;
              font-size:11px;font-weight:800;font-style:normal;line-height:18px;
              text-align:center;padding:0 4px}
-  #jeu{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+  #jeu{position:fixed;left:0;right:0;top:0;height:var(--vv,100dvh);max-height:var(--vv,100dvh);z-index:30;display:flex;flex-direction:column;
        background:rgba(6,12,32,.72);backdrop-filter:blur(10px);
        padding:calc(10px + env(safe-area-inset-top)) 14px
                calc(10px + env(safe-area-inset-bottom))}
@@ -133,7 +185,7 @@
   .carte .em{font-size:28px;flex:0 0 auto;line-height:1.1}
   .carte .nom{font-weight:800;font-size:16px;margin-bottom:3px}
   .carte .eff{font-size:13px;opacity:.7;line-height:1.35}
-  #tchat{position:fixed;inset:0;z-index:30;display:flex;flex-direction:column;
+  #tchat{position:fixed;left:0;right:0;top:0;height:var(--vv,100dvh);max-height:var(--vv,100dvh);z-index:30;display:flex;flex-direction:column;
          background:rgba(6,12,32,.72);backdrop-filter:blur(10px);
          padding:calc(10px + env(safe-area-inset-top)) 14px
                  calc(10px + env(safe-area-inset-bottom))}
@@ -159,24 +211,58 @@
   .titre button{width:34px;height:34px;border-radius:50%;border:0;
                 background:rgba(255,255,255,.10);color:#fff;font-size:16px;
                 line-height:1;padding:0;cursor:pointer;flex:0 0 auto}
-  #form{position:fixed;inset:0;z-index:32;display:flex;flex-direction:column;
-        background:rgba(6,12,32,.94);backdrop-filter:blur(10px);overflow:auto;
+  /* LE PANNEAU S'ARRETE AU-DESSUS DU CLAVIER.
+
+     `inset:0` mesure la fenetre de MISE EN PAGE, qui ne retrecit pas quand
+     le clavier s'ouvre : le bas du panneau — donc le bouton d'envoi —
+     passait dessous, et rien ne permettait d'aller le chercher. On le borne
+     donc a la hauteur VISIBLE : `100dvh` la suit sur les navigateurs
+     recents, et `--vv` (pose par `suivreClavier`) prend le relais partout
+     ailleurs, Android compris. */
+  #form{position:fixed;left:0;right:0;top:0;z-index:32;
+        height:var(--vv,100dvh);max-height:var(--vv,100dvh);
+        display:flex;flex-direction:column;
+        background:rgba(6,12,32,.94);backdrop-filter:blur(10px);
+        overflow-y:auto;-webkit-overflow-scrolling:touch;
         padding:calc(10px + env(safe-area-inset-top)) 14px
-                calc(10px + env(safe-area-inset-bottom))}
+                calc(14px + env(safe-area-inset-bottom))}
   #form .barre{display:flex;align-items:center;gap:12px;font-weight:800;
                margin-bottom:12px}
   #form .chrono{font-size:34px;font-weight:900;text-align:center;margin:4px 0}
   canvas.croquis{width:100%;display:block;touch-action:none}
-  .outils{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0}
-  .pot{width:30px;height:30px;border-radius:50%;border:2px solid transparent;
-       padding:0;cursor:pointer}
-  .pot.actif{border-color:#fff}
-  .outil{width:34px;height:30px;border-radius:9px;border:0;padding:0;
-         background:rgba(255,255,255,.12);color:#fff;font-size:15px;
-         cursor:pointer;margin-left:auto}
-  .outil + .outil{margin-left:0}
+  /* LES COULEURS DEFILENT, SEULES SUR LEUR LIGNE, et c'est exactement le
+     correctif deja applique sur le telephone maitre : onze pastilles et cinq
+     outils sur une meme rangee debordent de l'ecran, et ce qui depasse n'est
+     pas seulement invisible — c'est intouchable. */
+  .couleurs{display:flex;gap:8px;align-items:center;margin:8px 0 6px;
+            overflow-x:auto;padding-bottom:4px;
+            -webkit-overflow-scrolling:touch}
+  .couleurs::-webkit-scrollbar{display:none}
+  .outils{display:flex;gap:6px;align-items:center;margin:0 0 8px}
+  .pot{width:30px;height:30px;border-radius:50%;border:2px solid
+       rgba(255,255,255,.20);padding:0;cursor:pointer;flex:0 0 auto}
+  .pot.actif{border-color:#fff;border-width:3px}
+  .outil{width:40px;height:34px;border-radius:10px;border:1px solid
+         transparent;padding:0;background:rgba(255,255,255,.12);color:#fff;
+         font-size:16px;cursor:pointer;flex:0 0 auto;display:flex;
+         align-items:center;justify-content:center;margin:0}
+  .outil.actif{background:var(--accent);color:#08102a;
+               border-color:rgba(255,255,255,.55)}
+  /* L'annulation et la corbeille sont poussees a droite : ce ne sont pas des
+     outils de trace, et les melanger aux trois autres fait appuyer dessus. */
+  .outil.fin{margin-left:auto}
+  .epais .rond{display:block;border-radius:50%;background:currentColor}
   #form .chrono.court{color:#FF6B6B}
-  #param{position:fixed;inset:0;z-index:31;display:flex;flex-direction:column;
+  /* LES DEUX GESTES DU JEU, COTE A COTE ET EN GRAND : on les vise sans
+     regarder, un mot toutes les dix secondes, avec l'autre main occupee a
+     dessiner. */
+  .actes{display:flex;gap:10px;margin:10px 0 4px}
+  .acte{flex:1 1 0;justify-content:center;text-align:center;font-weight:800;
+        margin:0;padding:16px 10px;border-radius:16px;
+        background:rgba(255,255,255,.14)}
+  .acte.ok{background:#4FD68A;color:#08210f}
+  .acte.off{opacity:.45}
+  #param{position:fixed;left:0;right:0;top:0;height:var(--vv,100dvh);max-height:var(--vv,100dvh);z-index:31;display:flex;flex-direction:column;
          background:rgba(6,12,32,.86);backdrop-filter:blur(10px);overflow:auto;
          padding:calc(10px + env(safe-area-inset-top)) 14px
                  calc(10px + env(safe-area-inset-bottom))}
@@ -208,6 +294,7 @@
      seules les LIGNES NOUVELLES s'ajoutent a la liste. -->
 <button id="cartes" hidden><span>🃏</span><i id="pastilleC" hidden></i></button>
 <button id="bulle" hidden><span>💬</span><i id="pastille" hidden></i></button>
+<div id="apercu" hidden><b></b><span></span></div>
 <!-- LA MAIN, EN DEHORS DE `#app` POUR LA MEME RAISON QUE LA MESSAGERIE :
      `#app` est reconstruit a chaque etat recu, et une fenetre ouverte se
      refermerait toutes les deux secondes. -->
@@ -413,7 +500,7 @@
 
      Le maitre diffuse l'empreinte qu'il attend (`pv`). Quand elle ne
      correspond pas, la page le dit elle-meme, en haut de l'ecran. */
-  var PAGE_VERSION = '66269bfe';
+  var PAGE_VERSION = 'fdc23779';
 
   var HEARTBEAT_MS = 8000;
 
@@ -913,6 +1000,12 @@
          oublie. */
       fermerForm(true);
       formVu = null;
+      /* ET LE DIRECT SE COUPE. Ce chemin sort avant `majForm()`, donc la
+         branche « plus de formulaire » ne passait pas : un envoi de croquis
+         deja arme partait apres la fin de la partie, et l'ecouteur de souris
+         le reamorcait a chaque relachement. */
+      liveId = null;
+      if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
       if(avait){
         interrompu = Date.now();
         render(1);
@@ -932,6 +1025,7 @@
       if(neuf){
         sceneItems = []; sceneDone = 0;
         if(committed) committed.width = committed.width;
+        devoileS = false;
         /* NOUVELLE EPOQUE, NOUVEAU SECRET : un mot devoile ne doit pas le
            rester quand le mot suivant arrive — sinon celui qui a laisse son
            telephone sur la table donne le mot d'apres sans y toucher. */
@@ -1282,6 +1376,10 @@
 
     if(mineId && scene){
       sceneScreen(players, mineId);
+      /* APRES LA SCENE, ET SUR TOUS LES JEUX : c'est tout l'interet du
+         souvenir. Pose avant, il passerait devant le jeu en cours ; absent,
+         il ne servirait a rien. */
+      poserSouvenir(app);
       schedulePaint();
       return;
     }
@@ -1292,6 +1390,7 @@
       if(state.game){
         app.appendChild(el('div','banner','Partie en cours : '+state.game));
       }
+      poserSouvenir(app);
       var confirme = state.claims && state.claims[dev] === mineId;
       var c2=el('div','card');
       /* Tant que le maitre n'a pas confirme, on le dit : annoncer
@@ -1400,7 +1499,7 @@
         ? (scene.by + (scene.verb ? (' ' + scene.verb) : ''))
         : (scene.titre || '')));
       if(scene.left !== undefined && scene.left !== null){
-        t.appendChild(el('span','clock', scene.left + 's'));
+        t.appendChild(el('span','clock', tempsRestant(scene.left)));
       }
       head.appendChild(t);
       if(scene.total){
@@ -1440,6 +1539,9 @@
       if(devoile){
         c.appendChild(el('div','big', part.text));
         if(part.note) c.appendChild(el('div','hint', part.note));
+        /* EN MIME IL N'Y A PAS DE PANNEAU — rien a dessiner, donc rien a
+           ouvrir. Les deux boutons du jeu vivent alors sous le mot, ici. */
+        posActes(c, part.actes);
         var cacher = el('button', null, 'Cacher');
         cacher.onclick = function(){ devoile = false; render(1); };
         c.appendChild(cacher);
@@ -1533,7 +1635,15 @@
         g2.appendChild(el('div','nom', ligne.n || ''));
         if(ligne.s) g2.appendChild(el('div','hint', ligne.s));
         l.appendChild(g2);
-        if(ligne.v !== undefined) l.appendChild(el('div','pts', String(ligne.v)));
+        if(ligne.v !== undefined){
+          var txt = String(ligne.v);
+          /* CHIFFRE OU PHRASE : ce n'est pas la meme colonne. Voir
+             `.pts.texte`. On regarde le contenu et pas le jeu, parce que la
+             scene ne dit pas de quel jeu elle vient — et qu'un score reste
+             un score quel que soit l'expediteur. */
+          l.appendChild(el('div',
+            /^[-+]?\d+$/.test(txt.trim()) ? 'pts' : 'pts texte', txt));
+        }
         r.appendChild(l);
       });
       r.appendChild(el('div','hint',
@@ -1922,8 +2032,18 @@
        ou que le jeu change, et l'invite ne doit pas rester devant des champs
        que plus personne n'attend. */
     if(!f || !f.id){
+      /* LE DERNIER BROUILLON PART AVANT QU'ON REFERME. C'est le cas qui a
+         motive tout ce mecanisme : le buzzer tombe, le maitre retire le
+         formulaire, et ce qui etait ecrit doit compter. Le maitre accepte
+         encore quelques secondes apres la fin de la manche, precisement
+         pour ce paquet-la. */
+      envoyerBrouillon();
+      arreterBrouillon();
       if(!panneauF.hidden) fermerForm();
       formVu = null;
+      // Le direct se coupe avec le formulaire : plus rien ne doit partir.
+      liveId = null;
+      if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
       return;
     }
 
@@ -1936,23 +2056,61 @@
     }
 
     if(formVu !== f.id){
+      /* MEME RAISON QUE CI-DESSUS, mais pour l'enchainement : la manche
+         suivante arrive, et la precedente n'a pas encore rendu sa fin. On
+         vide AVANT de remettre `formChamps` a zero, sinon on enverrait une
+         grille vide sous l'identifiant de la manche qui vient de finir. */
+      envoyerBrouillon();
+      arreterBrouillon();
       formVu = f.id;
       formChamps = {};
       batirForm(f);
       if(f.auto) ouvrirForm();
     } else {
       majChronoForm(f);
+      majWipeForm(f);
     }
   }
 
   /* LE CHRONO SE MET A JOUR SANS RECONSTRUIRE LE FORMULAIRE. C'est tout
      l'interet de le tenir a part : un decompte qui redessine ses champs
      efface la frappe en cours. */
+  /* LE TEMPS QUI RESTE, ECRIT COMME SUR LE TELEPHONE MAITRE.
+
+     Il s'affichait « 90s » ici et « 1:30 » la-bas : le meme chrono, la meme
+     partie, deux lectures. Et au-dela d'une minute, un nombre de secondes
+     demande une division mentale — exactement au moment ou personne n'en a.
+     Sous la minute on garde les secondes, qui se lisent d'un coup.
+     Le jumeau Dart vit dans `lib/core/duree.dart`. */
+  function tempsRestant(s){
+    s = Math.max(0, s | 0);
+    if(s < 60) return s + ' s';
+    var r = s % 60;
+    return (s / 60 | 0) + ':' + (r < 10 ? '0' + r : r);
+  }
+
   function majChronoForm(f){
+    /* LA DERNIERE SECONDE FORCE L'ENVOI.
+
+       C'est une ceinture, la bretelle etant le vidage au retrait du
+       formulaire (`majForm`). Les deux servent le meme cas — celui qui ecrit
+       jusqu'au buzzer sans jamais quitter sa case ni appuyer sur le bouton —
+       mais ils ne dependent pas de la meme chose : celui-ci ne demande que
+       de voir le chrono tomber, celui-la demande de recevoir l'etat suivant.
+       Le maitre accepte encore quelques secondes apres la fin de la manche,
+       precisement pour ce paquet.
+
+       ÇA RESTE UN BROUILLON (`d: 1`), et c'est important : si l'horloge du
+       maitre a une seconde de retard sur celle-ci, la manche court encore et
+       ce qu'on tape apres doit continuer de partir. C'est le BUZZER DU
+       MAITRE qui rend les copies, pas cet envoi-ci. */
+    if(f.left !== undefined && f.left !== null && f.left <= 1){
+      envoyerBrouillon();
+    }
     var c = document.getElementById('chronoF');
     if(!c) return;
     if(f.left === undefined || f.left === null){ c.textContent = ''; return; }
-    c.textContent = String(f.left);
+    c.textContent = tempsRestant(f.left);
     if(f.left <= 5){ c.className = 'chrono court'; } else { c.className = 'chrono'; }
   }
 
@@ -1972,16 +2130,103 @@
   var croquis = null;       // le canvas
   var traits = [];          // ce qui a ete trace
   var traitEnCours = null;
+  var finDoigt = null;      // l'ecouteur `mouseup`, pour pouvoir le retirer
   var couleurC = '#ffffff';
-  var epaisseurC = 0.012;
+  var epaisseurC = 0.019;
+  var outilC = 'crayon';    // 'crayon' | 'pot' | 'gomme'
 
-  var PALETTE = ['#ffffff', '#FF6B6B', '#FFD166', '#4FD68A', '#5AB0FF',
-                 '#C084FF', '#111111'];
+  /* LA PALETTE ET LES EPAISSEURS VIENNENT DU MAITRE.
+
+     POURQUOI ELLES NE SONT PLUS ECRITES ICI. Cette page avait sa propre
+     liste de sept couleurs et une seule epaisseur ; le telephone maitre en
+     a onze et trois. Meme jeu, meme ardoise, deux jeux d'outils — selon le
+     telephone sur lequel on tombait, on pouvait remplir une zone ou pas.
+     C'est la divergence habituelle entre deux copies : on enrichit l'une, et
+     rien ne signale que l'autre est restee en arriere.
+
+     Les valeurs ci-dessous ne servent donc que si le formulaire n'en porte
+     pas — un jeu plus ancien, un maitre pas encore a jour. Voir
+     `DrawingBoard.palette` et `DrawingBoard.relativeWidths`. */
+  var PALETTE_DEFAUT = ['#ffffff', '#9AA3B2', '#1B1F2A', '#FF5D5D', '#FF8A3D',
+                        '#FFD24A', '#4FD68A', '#2BE8C5', '#5B9BFF', '#B07BFF',
+                        '#FF8ECF'];
+  var EPAISSEURS_DEFAUT = [0.008, 0.019, 0.05];
+  var PALETTE = PALETTE_DEFAUT;
+  var EPAISSEURS = EPAISSEURS_DEFAUT;
+  var epaisseurIdx = 1;
+
+  /* LA GOMME EST PLUS LARGE QUE LE CRAYON, du meme facteur que sur le
+     telephone maitre : on efface par zones, pas au trait. */
+  var GOMME_FACTEUR = 2.2;
+
+  /* L'ARDOISE QUI PART EN DIRECT (« Mime ou Dessine »).
+
+     Le telephone arabe rend son dessin UNE FOIS, a la fin : le panneau garde
+     donc tout pour lui jusqu'au bouton. Ici c'est l'inverse — la table
+     regarde le trait se faire, sur le telephone principal et sur les autres.
+     Un dessin qui n'arriverait qu'au coup de sifflet n'aurait aucun sens :
+     le mot est a deviner PENDANT.
+
+     LE DERNIER ENVOI EST GARANTI, et c'est tout l'interet de la minuterie :
+     un simple « pas plus d'une fois par tranche » laisse tomber la fin du
+     geste — on leve le doigt, et les derniers points ne partent jamais. Le
+     dessin reste ampute sur tous les autres ecrans, et celui qui dessine ne
+     peut pas le savoir. */
+  var liveId = null;        // l'identifiant du tour diffuse, ou null
+  var liveAt = 0;
+  var liveTimer = null;
+  var LIVE_ECART = 120;
+
+  function diffuserCroquis(){
+    if(!liveId) return;
+    function envoyer(){
+      liveAt = Date.now();
+      liveTimer = null;
+      /* LE MOT, PAS SEULEMENT LE TOUR : `liveId` ne change pas entre deux
+         mots. Sans ce compteur, un paquet parti juste avant « trouve ! »
+         arrive apres l'effacement et repose le dessin precedent sous le mot
+         suivant. Le maitre le rejette sur cette valeur. */
+      intent('act', { a: 'croquis', f: liveId, w: wipeVu, it: traits });
+    }
+    if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
+    var reste = LIVE_ECART - (Date.now() - liveAt);
+    if(reste <= 0){ envoyer(); return; }
+    liveTimer = setTimeout(envoyer, reste);
+  }
+
+  /* LE MOT SUIVANT EFFACE L'ARDOISE SANS FERMER LE PANNEAU.
+
+     On aurait pu changer l'identifiant du formulaire a chaque mot : le
+     panneau se serait referme et rouvert tout seul. Mais c'est une seconde
+     d'animation en plein chrono, a chaque mot trouve, sur le telephone de
+     celui qui joue. Un compteur suffit. */
+  var wipeVu = null;
+
+  function majWipeForm(f){
+    if(f.wipe === undefined || f.wipe === wipeVu) return;
+    /* ON NE NOTE L'EFFACEMENT QU'APRES L'AVOIR FAIT. Note avant le garde,
+       un effacement arrive alors qu'aucune ardoise n'existe encore passait
+       pour applique, et le suivant ne venait jamais. */
+    if(!croquis) return;
+    wipeVu = f.wipe;
+    traits = [];
+    traitEnCours = null;
+    peindreCroquis();
+  }
 
   function batirCroquis(f, hote){
     traits = [];
     traitEnCours = null;
+    croquisFait = null;   // le calque appartient a l'ardoise precedente
+
+    /* LES OUTILS DU MAITRE, s'il les a envoyes. Voir `PALETTE_DEFAUT`. */
+    PALETTE = (f.palette && f.palette.length) ? f.palette : PALETTE_DEFAUT;
+    EPAISSEURS = (f.epaisseurs && f.epaisseurs.length)
+      ? f.epaisseurs : EPAISSEURS_DEFAUT;
+    epaisseurIdx = Math.min(1, EPAISSEURS.length - 1);
+    epaisseurC = EPAISSEURS[epaisseurIdx];
     couleurC = PALETTE[0];
+    outilC = 'crayon';
 
     croquis = document.createElement('canvas');
     croquis.className = 'croquis';
@@ -1989,29 +2234,69 @@
     cadre.appendChild(croquis);
     hote.appendChild(cadre);
 
-    // La palette, l'annulation, l'effacement.
-    var barre = el('div','outils');
+    /* DEUX RANGEES, ET C'EST LA MEME RAISON QUE COTE APPLICATION : une seule
+       rangee de onze couleurs plus cinq outils deborde de l'ecran, et ce qui
+       depasse n'est pas seulement invisible — c'est intouchable. Les
+       couleurs defilent donc horizontalement, seules sur leur ligne, et les
+       outils ont la leur. */
+    var rangCouleurs = el('div','couleurs');
     PALETTE.forEach(function(c){
       var b = document.createElement('button');
       b.className = 'pot';
       b.style.background = c;
+      b.setAttribute('data-c', c);
       b.onclick = function(){
         couleurC = c;
+        /* CHOISIR UNE COULEUR SORT DE LA GOMME : personne ne choisit une
+           couleur pour effacer. Meme regle que sur le telephone maitre. */
+        if(outilC === 'gomme') outilC = 'crayon';
         majPots();
       };
-      b.setAttribute('data-c', c);
-      barre.appendChild(b);
+      rangCouleurs.appendChild(b);
     });
-    var annuler = el('button','outil','↶');
+    hote.appendChild(rangCouleurs);
+
+    var barre = el('div','outils');
+
+    function outil(cle, texte, titre){
+      var b = el('button','outil', texte);
+      b.setAttribute('data-o', cle);
+      b.title = titre || '';
+      b.onclick = function(){
+        outilC = cle;
+        majPots();
+      };
+      barre.appendChild(b);
+      return b;
+    }
+    outil('crayon', '✏️', 'Crayon');
+    outil('pot', '🪣', 'Pot de peinture');
+    outil('gomme', '🩹', 'Gomme');
+
+    /* L'EPAISSEUR TOURNE SUR TROIS CRANS, comme sur le telephone maitre : un
+       point dont la taille montre le cran qu'on a. Trois valeurs ne valent
+       pas un menu. */
+    var epais = el('button','outil epais');
+    epais.appendChild(el('i','rond'));
+    epais.onclick = function(){
+      epaisseurIdx = (epaisseurIdx + 1) % EPAISSEURS.length;
+      epaisseurC = EPAISSEURS[epaisseurIdx];
+      majPots();
+    };
+    barre.appendChild(epais);
+
+    var annuler = el('button','outil fin','↶');
     annuler.onclick = function(){
       traits.pop();
       peindreCroquis();
+      diffuserCroquis();
     };
     barre.appendChild(annuler);
-    var vider = el('button','outil','✕');
+    var vider = el('button','outil','🗑');
     vider.onclick = function(){
       traits = [];
       peindreCroquis();
+      diffuserCroquis();
     };
     barre.appendChild(vider);
     hote.appendChild(barre);
@@ -2026,8 +2311,23 @@
   function majPots(){
     var pots = document.querySelectorAll('#form .pot');
     for(var i = 0; i < pots.length; i++){
-      pots[i].className = pots[i].getAttribute('data-c') === couleurC
-        ? 'pot actif' : 'pot';
+      pots[i].className =
+        (pots[i].getAttribute('data-c') === couleurC && outilC !== 'gomme')
+          ? 'pot actif' : 'pot';
+    }
+    var outils = document.querySelectorAll('#form .outil[data-o]');
+    for(var j = 0; j < outils.length; j++){
+      outils[j].className = outils[j].getAttribute('data-o') === outilC
+        ? 'outil actif' : 'outil';
+    }
+    /* LE POINT D'EPAISSEUR MONTRE LE CRAN. On le dimensionne d'apres la
+       valeur elle-meme, pas d'apres l'indice : trois crans aujourd'hui, un
+       autre nombre demain, et rien a retoucher ici. */
+    var rond = document.querySelector('#form .epais .rond');
+    if(rond){
+      var taille = Math.round(6 + epaisseurC * 200);
+      rond.style.width = taille + 'px';
+      rond.style.height = taille + 'px';
     }
   }
 
@@ -2056,10 +2356,28 @@
     function debut(ev){
       ev.preventDefault();
       var p = pos(ev);
-      traitEnCours = { t: 's', c: couleurC, w: epaisseurC,
+      /* LE POT N'EST PAS UN TRACE : il agit a la touche et n'a pas de suite
+         de points. Meme format que celui que le maitre envoie et que cette
+         page sait deja rejouer (`floodFill`) — un point de depart et une
+         couleur, jamais une image. */
+      if(outilC === 'pot'){
+        traitEnCours = null;
+        traits.push({ t: 'f', c: couleurC, x: p[0], y: p[1] });
+        peindreCroquis();
+        diffuserCroquis();
+        return;
+      }
+      var gomme = outilC === 'gomme';
+      traitEnCours = { t: 's',
+                       w: gomme ? epaisseurC * GOMME_FACTEUR : epaisseurC,
                        p: p[0] + ',' + p[1] };
+      /* `e` OU `c`, JAMAIS LES DEUX : c'est l'encodage que le maitre attend
+         (voir `encodeBoard`). Une gomme qui porterait une couleur peindrait
+         un trait sombre au lieu de creuser. */
+      if(gomme){ traitEnCours.e = 1; } else { traitEnCours.c = couleurC; }
       traits.push(traitEnCours);
       peindreCroquis();
+      diffuserCroquis();
     }
     function bouge(ev){
       if(!traitEnCours) return;
@@ -2073,8 +2391,13 @@
       if(Math.abs(p[0] - d[0]) + Math.abs(p[1] - d[1]) < 6) return;
       traitEnCours.p += ' ' + p[0] + ',' + p[1];
       peindreCroquis();
+      diffuserCroquis();
     }
-    function fin(){ traitEnCours = null; }
+    /* LE DOIGT SE LEVE : on force le dernier envoi. Sans lui, la fin du
+       trait attend le prochain geste — et si c'etait le dernier, elle
+       n'arrive jamais. */
+    function fin(){ traitEnCours = null; diffuserCroquis(); }
+    finDoigt = fin;
 
     croquis.addEventListener('touchstart', debut, { passive: false });
     croquis.addEventListener('touchmove', bouge, { passive: false });
@@ -2104,6 +2427,22 @@
     }
   }
 
+  /* LE CALQUE DEJA PEINT, et pourquoi il a fallu en passer par la.
+
+     Repeindre l'ardoise entiere a chaque point du doigt marchait tant qu'il
+     n'y avait que des traits. Le pot de peinture change tout : un
+     remplissage se REJOUE — on relit l'image, on etale, on la repose — ce
+     qui coute des centaines de milliers de pixels a chaque fois. Trois
+     aplats posees, et le doigt trainait derriere le trait.
+
+     Meme remede que pour l'ardoise du salon (`repaintDone`) : tout ce qui
+     est fini est peint UNE FOIS sur un calque hors ecran, et seul l'element
+     en cours se repeint. Le calque se refait quand la liste RETRECIT —
+     annulation, effacement — parce qu'on ne peut pas retirer ce qu'on a
+     deja peint. */
+  var croquisFait = null;
+  var croquisFaitN = 0;
+
   function peindreCroquis(){
     if(!croquis || !croquis.parentNode) return;
     var r = croquis.parentNode.getBoundingClientRect();
@@ -2116,18 +2455,159 @@
       croquis.width = w; croquis.height = h;
       croquis.style.height = Math.round(h / dpr) + 'px';
     }
+    if(!croquisFait || croquisFait.width !== w || croquisFait.height !== h){
+      croquisFait = document.createElement('canvas');
+      croquisFait.width = w; croquisFait.height = h;
+      croquisFaitN = -1;
+    }
+    var c = cadreCroquis();
+    var gf = croquisFait.getContext('2d');
+    /* LE CALQUE A TROP DE CHOSES DESSUS : on repart de zero. C'est le cas de
+       l'annulation et de l'effacement, et le seul ou l'on paie le prix fort
+       — une fois, sur un geste explicite, jamais en plein trace. */
+    var cible = Math.max(0, traits.length - 1);
+    if(croquisFaitN < 0 || croquisFaitN > cible){
+      gf.clearRect(0, 0, w, h);
+      croquisFaitN = 0;
+    }
+    for(; croquisFaitN < cible; croquisFaitN++){
+      drawItem(gf, traits[croquisFaitN], c, croquisFait);
+    }
+
     var g = croquis.getContext('2d');
     g.clearRect(0, 0, w, h);
-    var c = cadreCroquis();
-    // Le cadre utile, pour qu'on voie ou l'on a le droit de dessiner.
+    g.drawImage(croquisFait, 0, 0);
+    if(traits.length){
+      drawItem(g, traits[traits.length - 1], c, croquis);
+    }
+    /* LE CADRE UTILE EN DERNIER, ET C'EST VOLONTAIRE.
+       Pose avant, il servirait de bord a un remplissage — ici seulement,
+       puisque les ecrans qui rejouent le dessin ne le tracent pas. On verrait
+       alors sur son propre telephone un aplat qui s'arrete au cadre, et sur
+       tous les autres un aplat qui deborde. */
     g.save();
     g.strokeStyle = 'rgba(255,255,255,.18)';
     g.lineWidth = 1;
     g.strokeRect(c.x, c.y, c.w, c.h);
     g.restore();
-    for(var i = 0; i < traits.length; i++){
-      drawItem(g, traits[i], c, croquis);
-    }
+  }
+
+  /* ------------------------------------------------------------------
+     LE BROUILLON : CE QUI EST ECRIT PART, MEME SANS LE BOUTON.
+
+     POURQUOI CE CODE EXISTE. Au petit bac, quelqu'un a rempli ses six
+     categories, n'a pas appuye sur « rendre ma copie » avant le buzzer, et a
+     fini la manche a zero point. Rien de ce qu'il avait ecrit n'avait jamais
+     quitte son telephone : la grille etait complete, sous ses yeux, et
+     invisible pour tout le monde d'autre.
+
+     Le bouton reste — il ferme le panneau et dit « j'ai fini », ce qui
+     avance la manche quand tout le monde a rendu. Mais ne pas l'avoir presse
+     ne coute plus rien : la grille est deja partie, ligne apres ligne.
+
+     TROIS PRECAUTIONS.
+     - `d: 1` marque le brouillon. Sans lui le maitre croirait la copie
+       rendue des la premiere lettre tapee, et fermerait la manche au nez des
+       autres des que le dernier joueur aurait effleure son clavier.
+     - ON N'ENVOIE QUE CE QUI A CHANGE. La comparaison porte sur la grille
+       entiere serialisee : une frappe qui ne change rien — une fleche, un
+       clic dans le champ — ne coute pas un message.
+     - UN SEUL ENVOI PAR SECONDE AU PLUS, et le dernier est garanti : la
+       minuterie est relancee a chaque frappe, jamais annulee sans etre
+       rejouee. Un « au plus une fois par tranche » tout simple perdrait
+       precisement la fin de la saisie, c'est-a-dire le seul moment qui
+       compte.
+     ------------------------------------------------------------------ */
+  var brouillonId = null;
+  var brouillonChamps = [];
+  var brouillonTimer = null;
+  var brouillonEnvoye = '';
+  var BROUILLON_ECART = 900;
+
+  /* La grille telle qu'elle partirait maintenant. */
+  function grilleBrouillon(){
+    var v = {};
+    brouillonChamps.forEach(function(ch){
+      v[ch.k] = (formChamps[ch.k] || '').trim();
+    });
+    return v;
+  }
+
+  function planifierBrouillon(){
+    if(!brouillonId || brouillonTimer) return;
+    brouillonTimer = setTimeout(function(){
+      brouillonTimer = null;
+      envoyerBrouillon();
+    }, BROUILLON_ECART);
+  }
+
+  /* Envoie tout de suite, si quelque chose a change. Appele aussi quand on
+     quitte un champ et quand le formulaire disparait — le dernier mot tape
+     avant le buzzer doit partir, meme si la minuterie n'a pas encore rendu
+     la main. */
+  function envoyerBrouillon(){
+    if(brouillonTimer){ clearTimeout(brouillonTimer); brouillonTimer = null; }
+    if(!brouillonId) return;
+    var v = grilleBrouillon();
+    var signe = JSON.stringify(v);
+    if(signe === brouillonEnvoye) return;
+    brouillonEnvoye = signe;
+    /* `send` ET NON `intent` : un brouillon n'attend aucune confirmation, et
+       l'inscrire comme intention en attente ferait clignoter « le telephone
+       principal n'a pas repondu » a chaque mot tape. */
+    send('act', { a: 'form', f: brouillonId, v: v, d: 1 });
+  }
+
+  function arreterBrouillon(){
+    if(brouillonTimer){ clearTimeout(brouillonTimer); brouillonTimer = null; }
+    brouillonId = null;
+    brouillonChamps = [];
+    brouillonEnvoye = '';
+  }
+
+  /* LA ZONE DE TEXTE EPOUSE SON CONTENU. Sans ca elle garderait une hauteur
+     fixe et couperait la phrase qu'on vient d'ecrire, ce qui etait tout le
+     defaut de l'`<input>` qu'elle remplace. */
+  function autoHaut(t){
+    t.style.height = 'auto';
+    t.style.height = Math.min(t.scrollHeight, 180) + 'px';
+  }
+
+  /* ------------------------------------------------------------------
+     LES GESTES QUE LE JEU PROPOSE : « TROUVÉ », « PASSER ».
+
+     POURQUOI C'EST GENERIQUE. Cette page ne connait aucune regle, et c'est
+     ce qui lui permet de servir tous les jeux sans grossir. Le maitre
+     envoie donc le BOUTON ENTIER — son libelle, son allure, et le message a
+     renvoyer tel quel s'il est presse. La page l'affiche et le transmet ;
+     c'est le maitre qui verifie que le geste est recevable (le bon tour, le
+     bon mot, le bon joueur), parce que lui seul le sait.
+
+     LE BOUTON SE DESARME DES QU'IL EST PRESSE. Sous chrono on appuie deux
+     fois, et le doigt rebondit : sans ça, un « trouve » pouvait bruler deux
+     mots. Le maitre s'en garde aussi de son cote — le message porte le
+     numero du mot — mais un bouton qui reste vif apres un appui donne
+     surtout l'impression que rien ne s'est passe. */
+  function posActes(hote, liste){
+    if(!liste || !liste.length) return;
+    var rang = el('div','actes');
+    liste.forEach(function(a){
+      if(!a || !a.msg) return;
+      var b = el('button', a.ok ? 'acte ok' : 'acte', a.lbl || '?');
+      if(a.off){
+        b.disabled = true;
+        b.className = 'acte off';
+      } else {
+        b.onclick = function(){
+          if(b.disabled) return;
+          b.disabled = true;
+          b.className = 'acte off';
+          intent('act', a.msg);
+        };
+      }
+      rang.appendChild(b);
+    });
+    hote.appendChild(rang);
   }
 
   function batirForm(f){
@@ -2138,7 +2618,14 @@
        peintures sur des canvas morts. */
     if(croquis){
       window.removeEventListener('resize', peindreCroquis);
+      /* ET L'ECOUTEUR DU RELACHEMENT DE SOURIS, pose sur `window` par
+         `brancherDoigt`. Il n'etait pas retire : chaque manche en ajoutait
+         un, et au bout de dix manches un simple clic rejouait dix fois la
+         fin de trait — donc dix diffusions. */
+      if(finDoigt){ window.removeEventListener('mouseup', finDoigt); }
+      finDoigt = null;
       croquis = null;
+      croquisFait = null;
       traits = [];
       traitEnCours = null;
     }
@@ -2178,17 +2665,78 @@
       batirCroquis(f, corpsF);
     }
 
+    /* LE DIRECT S'ARME ICI, une fois l'ardoise en place, et se desarme pour
+       tous les autres formulaires : `liveId` est la seule chose qui autorise
+       un envoi, donc le telephone arabe ne peut pas se mettre a diffuser par
+       accident. */
+    if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
+    liveId = (f.dessin && f.live) ? f.id : null;
+    wipeVu = f.wipe;
+
     var champs = f.dessin ? [] : (f.champs || []);
+
+    /* LE BROUILLON S'ARME ICI. Voir `envoyerBrouillon` pour le pourquoi. */
+    brouillonChamps = champs;
+    brouillonId = (!f.dessin && f.brouillon && champs.length) ? f.id : null;
+    brouillonEnvoye = '';
+
     champs.forEach(function(ch){
       var c = el('div','card');
       c.appendChild(el('div','lbl', ch.lbl || ch.k));
-      var i = el('input'); i.type = 'text'; i.maxLength = 40;
+      /* UNE ZONE DE TEXTE, ET PAS UNE LIGNE : voir `textarea.champ`. Deux
+         cents caracteres au lieu de quarante — une reponse coupee au
+         quarantieme caractere se lisait comme une faute de celui qui
+         l'avait ecrite. */
+      var i = document.createElement('textarea');
+      i.className = 'champ';
+      i.rows = 1;
+      i.maxLength = 200;
       i.value = formChamps[ch.k] || '';
-      i.oninput = function(){ formChamps[ch.k] = i.value; };
-      i.onblur = function(){ lastBlur = Date.now(); };
+      i.oninput = function(){
+        formChamps[ch.k] = i.value;
+        autoHaut(i);
+        planifierBrouillon();
+      };
+      /* ENTREE VALIDE, ELLE NE VA PAS A LA LIGNE. Un retour a la ligne dans
+         une reponse ne veut rien dire, et le clavier des telephones affiche
+         « entree » la ou on attend « suivant ». */
+      i.onkeydown = function(ev){
+        if(ev.key === 'Enter'){ ev.preventDefault(); i.blur(); }
+      };
+      i.onblur = function(){ lastBlur = Date.now(); envoyerBrouillon(); };
       c.appendChild(i);
       corpsF.appendChild(c);
+      setTimeout(function(){ autoHaut(i); }, 0);
     });
+
+    /* EN DIRECT, IL N'Y A RIEN A RENDRE.
+
+       Le dessin est deja parti, trait par trait. Un bouton « envoyer » ne
+       pourrait que tromper — et un bouton qui referme le panneau au milieu du
+       chrono ferait perdre le tour a celui qui le presse par reflexe. C'est
+       le maitre qui decide quand la manche s'arrete ; ce panneau se referme
+       alors tout seul (`majForm`). */
+    if(liveId){
+      corpsF.appendChild(
+        el('div','hint', f.btn || 'La table te regarde dessiner.'));
+      /* « TROUVÉ » ET « PASSER » SONT ICI, ET PAS SEULEMENT SUR L'ECRAN
+         D'ACCUEIL : pendant tout le tour, celui qui dessine est dans ce
+         panneau. Les chercher ailleurs coutait un aller-retour a chaque
+         mot, sous chrono. */
+      posActes(corpsF, f.actes);
+      return;
+    }
+
+    /* ON LE DIT, PARCE QUE CE N'EST PAS DEVINABLE. Le bouton ressemble a
+       « sans moi, rien ne part » — c'etait vrai, ça ne l'est plus, et
+       quelqu'un qui le croit encore ecrit le pouce en l'air au lieu
+       d'ecrire. */
+    if(brouillonId){
+      corpsF.appendChild(el('div','hint',
+        'Ce que tu écris est transmis au fur et à mesure, et ta copie est '
+        + 'ramassée toute seule à la fin du temps. Le bouton sert à dire '
+        + 'que tu as fini avant les autres.'));
+    }
 
     var b = el('button','primary', f.btn || 'Envoyer');
     b.onclick = function(){
@@ -2206,6 +2754,11 @@
         });
         msg.v = v;
       }
+      /* LE BROUILLON S'ARRETE AVANT L'ENVOI DEFINITIF, et pas apres : un
+         brouillon parti ensuite arriverait derriere la copie rendue et
+         reposerait la grille telle qu'elle etait juste avant. Le maitre
+         s'en garde aussi de son cote, mais il vaut mieux ne pas l'envoyer. */
+      arreterBrouillon();
       formEnvoye = f.id;
       intent('act', msg);
       fermerForm();
@@ -2257,7 +2810,12 @@
        salon, elle n'est qu'un bouton qui encombre un coin de l'ecran. */
     var utile = !!state && !!(myClaim || (state.claims && state.claims[dev]));
     bulle.hidden = !utile;
-    if(!utile){ panneau.hidden = true; ouvertTchat = false; return; }
+    if(!utile){
+      panneau.hidden = true;
+      ouvertTchat = false;
+      cacherApercu();
+      return;
+    }
 
     var neuf = false;
     liste.forEach(function(l){
@@ -2278,6 +2836,12 @@
          qui rend une messagerie desagreable. */
       lignes.scrollTop = lignes.scrollHeight;
     }
+    /* LE DERNIER MESSAGE SE MONTRE TOUT SEUL, si la fenetre est fermee.
+       Ouverte, il est deja lisible en grand juste derriere. */
+    if(neuf && !ouvertTchat && liste.length){
+      montrerApercu(liste[liste.length - 1]);
+    }
+    majAnnonce();
     pastille.hidden = (vus <= lus);
     if(!liste.length && !lignes.querySelector('.vide')){
       lignes.appendChild(el('div','vide',
@@ -2288,7 +2852,52 @@
     }
   }
 
+  /* ------------------------------------------------------------------
+     L'APERÇU FLOTTANT. Voir `#apercu`. */
+  var apercu = document.getElementById('apercu');
+  var apercuFin = null;
+  var APERCU_DUREE = 5000;
+
+  /* CE QUI PASSE DANS LE BANDEAU : un message de quelqu'un, ou une ANNONCE
+     du jeu (« Léa a joué le Bouclier »). Les deux se voient passer et
+     s'oublient ; seuls les messages se relisent, et eux seuls entrent dans
+     la conversation. Voir `PartyController.announce` cote Dart. */
+  var annonceVue = 0;
+
+  function majAnnonce(){
+    var a = state && state.an;
+    if(!a || typeof a.i !== 'number' || a.i <= annonceVue) return;
+    annonceVue = a.i;
+    montrerApercu({ t: a.t });
+  }
+
+  function montrerApercu(l){
+    if(!l) return;
+    var b = apercu.querySelector('b');
+    b.textContent = l.w || '';
+    b.hidden = !l.w;
+    apercu.querySelector('span').textContent = l.t || '';
+    apercu.hidden = false;
+    /* DEUX IMAGES DE DECALAGE AVANT LA CLASSE : posee dans la meme image que
+       le `hidden = false`, la transition ne part pas — le navigateur n'a
+       jamais vu l'etat de depart. */
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){ apercu.className = 'vu'; });
+    });
+    if(apercuFin) clearTimeout(apercuFin);
+    apercuFin = setTimeout(cacherApercu, APERCU_DUREE);
+  }
+
+  function cacherApercu(){
+    if(apercuFin){ clearTimeout(apercuFin); apercuFin = null; }
+    apercu.className = '';
+    setTimeout(function(){ if(apercu.className !== 'vu') apercu.hidden = true; }, 240);
+  }
+
   function ouvrirTchat(){
+    /* On ouvre : l'aperçu n'a plus de raison d'etre, la conversation entiere
+       arrive par-dessus. */
+    cacherApercu();
     ouvertTchat = true;
     panneau.hidden = false;
     lus = vus; pastille.hidden = true;
@@ -2447,6 +3056,51 @@
   /* Notre poche, descellee. Meme mecanique que la part privee de la scene :
      le maitre la brouille avec le secret de cet appareil, et le canal la
      diffuse a tous — qui n'en font rien. */
+  /* ------------------------------------------------------------------
+     LE SOUVENIR : le mot ou la mission qu'on garde toute la soiree.
+
+     CE QUE LA SCENE NE POUVAIT PAS FAIRE. Le mot interdit et la mission
+     secrete courent pendant que d'autres jeux passent — et la scene, elle,
+     appartient au jeu AFFICHE : des que la soiree enchainait, le mot
+     disparaissait de l'ecran de celui qui devait le garder. Il fallait le
+     redemander a voix haute, c'est-a-dire le bruler.
+
+     Il voyage donc a cote de la scene, brouille par appareil comme la poche
+     (voir `PartyController.setKeepsake`), et il est pose sur CHAQUE ecran,
+     quel que soit le jeu en cours. Cache par defaut : le telephone se penche
+     vite du cote du voisin.
+     ------------------------------------------------------------------ */
+  var devoileS = false;
+
+  function souvenir(){
+    if(!state || !state.keep) return null;
+    var sceau = state.keep[dev];
+    if(!sceau) return null;
+    var brut = ouvrir(secret, sceau);
+    if(!brut) return null;
+    try { return JSON.parse(brut); } catch(e){ return null; }
+  }
+
+  function poserSouvenir(hote){
+    var k = souvenir();
+    if(!k || !k.text) return;
+    var c = el('div','card secret');
+    c.appendChild(el('div','lbl', k.label || 'Rien qu’a toi'));
+    if(devoileS){
+      c.appendChild(el('div','big', k.text));
+      if(k.note) c.appendChild(el('div','hint', k.note));
+      var cacher = el('button', null, 'Cacher');
+      cacher.onclick = function(){ devoileS = false; render(1); };
+      c.appendChild(cacher);
+    } else {
+      var voir = el('button', null, '• • •  ' + (k.label || 'Ton secret')
+        + ' — appuie pour revoir');
+      voir.onclick = function(){ devoileS = true; render(1); };
+      c.appendChild(voir);
+    }
+    hote.appendChild(c);
+  }
+
   function poche(){
     if(!state || !state.pocket) return null;
     var sceau = state.pocket[dev];
@@ -2624,6 +3278,32 @@
      tours. Le verrou se perd des qu'on change d'onglet, d'ou la reprise dans
      `wake`. Non supporte partout ; l'absence n'est pas une panne. */
   var verrou = null;
+  /* ------------------------------------------------------------------
+     LA HAUTEUR VRAIMENT VISIBLE.
+
+     Quand le clavier s'ouvre, la fenetre de MISE EN PAGE ne bouge pas : un
+     panneau en `position:fixed; inset:0` garde donc toute la hauteur de
+     l'ecran, et son bas — le bouton d'envoi — se retrouve CACHE SOUS LE
+     CLAVIER, sans moyen d'y acceder. C'est le defaut qui rendait le
+     telephone arabe injouable : on ecrivait sa phrase et on ne pouvait plus
+     la rendre.
+
+     `visualViewport` donne la hauteur reellement visible. On la pose en
+     variable CSS, et les panneaux s'y bornent.
+     ------------------------------------------------------------------ */
+  function suivreClavier(){
+    var vv = window.visualViewport;
+    if(!vv) return;
+    function maj(){
+      document.documentElement.style.setProperty('--vv',
+        Math.round(vv.height) + 'px');
+    }
+    vv.addEventListener('resize', maj);
+    vv.addEventListener('scroll', maj);
+    maj();
+  }
+  suivreClavier();
+
   function tenirEcran(){
     if(!('wakeLock' in navigator)) return;
     try {
