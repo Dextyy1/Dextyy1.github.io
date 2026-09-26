@@ -368,17 +368,48 @@
      `.ardoise-zone`, posee au centre par `peindreCroquis`, a EXACTEMENT les
      proportions du dessin : fond, bord et coins arrondis delimitent ce qui
      se dessine, et rien d'autre. */
-  .ardoise-invite{position:relative;min-height:160px;margin-bottom:10px}
+  /* LA HAUTEUR DE LA BOITE EST POSEE PAR `peindreCroquis` (retour du
+     26/09, suite) : c'est la LARGEUR de l'ecran qui decide, plus la hauteur
+     restante. Partager la hauteur avec la consigne, le chrono, les outils
+     et les boutons donnait une ardoise d'un demi-ecran de large en « Mime ou
+     Dessine ». Le joueur prefere faire defiler un peu pour atteindre les
+     boutons plutot que dessiner dans un timbre-poste. Marges negatives : le
+     panneau a 14 px de chaque cote, l'ardoise n'en garde que 6. */
+  .ardoise-invite{position:relative;min-height:160px;margin:0 -8px 8px}
   .ardoise-zone{position:absolute;left:0;top:0;overflow:hidden;
                 border-radius:16px;
                 box-shadow:0 0 0 2px rgba(255,255,255,.55),
                            0 6px 22px rgba(0,0,0,.35)}
   .ardoise-zone canvas.croquis{position:absolute;left:0;top:0;
                                width:100%;height:100%}
-  #form.dessin #corpsF{flex:1 1 auto;min-height:0;display:flex;
-                       flex-direction:column}
+  #form.dessin #corpsF{flex:1 0 auto;display:flex;flex-direction:column}
   #form.dessin #corpsF > *{flex:0 0 auto}
-  #form.dessin #corpsF > .ardoise-invite{flex:1 1 0}
+  /* LA CONSIGNE, SUR UNE LIGNE. Une carte avec son intitule au-dessus et le
+     mot en corps 30 prenait cent pixels a l'ardoise ; l'intitule passe a
+     gauche du mot, et le mot en corps 20. Le sous-titre explicatif saute :
+     on le lit une fois, puis il ne fait que pousser l'ardoise vers le bas. */
+  #form.dessin .hint.sous{display:none}
+  #form.dessin .card.consigne{display:flex;align-items:baseline;gap:10px;
+                              padding:7px 12px;margin-bottom:8px;
+                              border-radius:14px}
+  #form.dessin .consigne .lbl{margin:0;flex:0 0 auto;white-space:nowrap}
+  #form.dessin .consigne .big{margin:0;font-size:20px;line-height:1.2;
+                              flex:1 1 auto;min-width:0}
+  /* LE CHRONO, PAR-DESSUS LE DESSIN, EN HAUT : un badge translucide que le
+     doigt traverse (`pointer-events:none`) — il ne coute aucune hauteur et
+     reste sous les yeux de celui qui dessine. */
+  .ardoise-zone .chrono{position:absolute;top:6px;left:50%;z-index:1;
+                        transform:translateX(-50%);margin:0;
+                        padding:2px 10px;border-radius:99px;
+                        font-size:15px;font-weight:800;line-height:1.3;
+                        background:rgba(0,0,0,.32);opacity:.9;
+                        pointer-events:none}
+  #form .ardoise-zone .chrono{font-size:15px;margin:0}
+  .ardoise-zone .chrono:empty{display:none}
+  /* LE RETOUR AU CADRE ENTIER, qui n'existe que zoome. */
+  .ardoise-zone .zoomRaz{position:absolute;top:6px;right:6px;z-index:1;
+                         background:rgba(0,0,0,.40)}
+  .ardoise-zone .zoomRaz[hidden]{display:none}
   .palette-pop{position:absolute;left:8px;right:8px;bottom:8px;z-index:2;
                display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
                padding:12px;border-radius:16px;line-height:normal;
@@ -678,7 +709,7 @@
 
      Le maitre diffuse l'empreinte qu'il attend (`pv`). Quand elle ne
      correspond pas, la page le dit elle-meme, en haut de l'ecran. */
-  var PAGE_VERSION = '8f66ff07';
+  var PAGE_VERSION = '2b105402';
 
   var HEARTBEAT_MS = 8000;
 
@@ -2524,6 +2555,33 @@
   var epaisseurC = 0.019;
   var outilC = 'crayon';    // 'crayon' | 'pot' | 'gomme'
 
+  /* LE ZOOM DE L'ARDOISE : deux doigts pincent et deplacent, un doigt
+     dessine.
+
+     IL NE TOUCHE QU'A LA VUE. Les points sont ramenes dans le repere de
+     l'ardoise avant d'etre notes (`versArdoise`), et l'epaisseur reste une
+     fraction de la largeur de l'ardoise : un trait fin pose a ×4 est fin sur
+     le dessin, et ce qui part vers le maitre ne sait rien du zoom.
+     `zoomC` va de 1 a 4 ; `panXC` / `panYC` sont le decalage de la vue, en
+     fraction de la zone (de `1 - zoomC` a 0 : le dessin ne sort jamais du
+     cadre). */
+  var ZOOM_MAX = 4;
+  var zoomC = 1, panXC = 0, panYC = 0;
+  var zoomRaz = null;       // le bouton « ⤢ », visible seulement zoome
+
+  function remettreZoom(){
+    zoomC = 1; panXC = 0; panYC = 0;
+    if(zoomRaz) zoomRaz.hidden = true;
+  }
+
+  /* Le decalage ne laisse jamais voir au-dela du dessin. */
+  function bornerZoom(){
+    zoomC = Math.max(1, Math.min(ZOOM_MAX, zoomC));
+    panXC = Math.max(1 - zoomC, Math.min(0, panXC));
+    panYC = Math.max(1 - zoomC, Math.min(0, panYC));
+    if(zoomRaz) zoomRaz.hidden = !(zoomC > 1.01);
+  }
+
   /* LA PALETTE ET LES EPAISSEURS VIENNENT DU MAITRE.
 
      POURQUOI ELLES NE SONT PLUS ECRITES ICI. Cette page avait sa propre
@@ -2600,6 +2658,8 @@
     wipeVu = f.wipe;
     traits = [];
     traitEnCours = null;
+    /* Le mot suivant repart du cadre entier. */
+    remettreZoom();
     peindreCroquis();
   }
 
@@ -2616,6 +2676,10 @@
     epaisseurC = EPAISSEURS[epaisseurIdx];
     couleurC = PALETTE[0];
     outilC = 'crayon';
+    zoomRaz = null;
+    remettreZoom();
+    masquesC = [];
+    croquisZ = null;
 
     croquis = document.createElement('canvas');
     croquis.className = 'croquis';
@@ -2655,6 +2719,15 @@
       pop.appendChild(b);
     });
     zone.appendChild(pop);
+
+    /* « ⤢ » : retour au cadre entier. Sur l'ardoise, et seulement zoome —
+       c'est la qu'on regarde a ce moment-la, et la rangee d'outils est deja
+       pleine a 360 px. Le double appui a deux doigts fait la meme chose. */
+    zoomRaz = el('button','outil zoomRaz','⤢');
+    zoomRaz.title = 'Revenir au dessin entier';
+    zoomRaz.hidden = true;
+    zoomRaz.onclick = function(){ remettreZoom(); peindreCroquis(); };
+    zone.appendChild(zoomRaz);
 
     var barre = el('div','outils');
 
@@ -2751,70 +2824,212 @@
      dans le meme rectangle, quelle que soit la taille de son ecran. */
   var ARDOISE = 0.75;
 
-  function brancherDoigt(f){
-    function pos(ev){
-      var r = croquis.getBoundingClientRect();
-      var t = (ev.touches && ev.touches[0]) ? ev.touches[0] : ev;
-      var dpr = croquis.width / r.width;
-      var c = cadreCroquis();
-      var x = ((t.clientX - r.left) * dpr - c.x) / c.w;
-      var y = ((t.clientY - r.top) * dpr - c.y) / c.h;
-      return [Math.round(Math.max(0, Math.min(1, x)) * 1000),
-              Math.round(Math.max(0, Math.min(1, y)) * 1000)];
+  /* LES DOIGTS, EN EVENEMENTS « POINTER » ET PLUS « TOUCH » / « MOUSE ».
+
+     Le zoom demande de savoir COMBIEN de doigts sont poses, et lesquels :
+     les evenements tactiles ne donnaient que « le premier », et un second
+     doigt se lisait comme un saut du premier — un trait parasite en travers
+     du dessin. Ici chaque pointeur a son identifiant, souris comprise.
+
+     LA REGLE : le geste commence au premier doigt pose et finit au dernier
+     leve. Un doigt seul dessine. Des qu'un second se pose, le geste devient
+     un pincement JUSQU'AU BOUT : le trait commence est retire s'il venait de
+     naitre (c'etait le premier doigt du pincement), arrete la ou il en est
+     s'il etait deja long ; et le doigt qui reste apres le pincement ne
+     dessine pas. Le pot ne se verse qu'au lever, s'il n'y a pas eu de second
+     doigt — sinon chaque zoom, pot en main, peignait une zone. */
+  var doigts = {};          // identifiant -> [x, y] en pixels CSS de l'ecran
+  var nDoigts = 0;
+  var gestePince = false;   // un second doigt est venu pendant ce geste
+  var potEnAttente = null;  // [x, y] en milliemes, verse au lever
+  var traitNeA = 0;
+  var pince = null;         // le repere du pincement
+  var pinceDebut = 0, pinceBouge = false, dernierTape2 = 0;
+  var peintureDemandee = false;
+
+  /* Une peinture par image au plus pendant un pincement : un doigt produit
+     plus d'evenements que l'ecran n'affiche d'images. */
+  function demanderPeinture(){
+    if(peintureDemandee) return;
+    peintureDemandee = true;
+    requestAnimationFrame(function(){
+      peintureDemandee = false;
+      peindreCroquis();
+    });
+  }
+
+  /* Pixel de l'ecran -> point de l'ardoise, en milliemes, zoom compris. */
+  function versArdoise(x, y){
+    var r = croquis.getBoundingClientRect();
+    var vx = r.width ? (x - r.left) / r.width : 0;
+    var vy = r.height ? (y - r.top) / r.height : 0;
+    var bx = (vx - panXC) / zoomC;
+    var by = (vy - panYC) / zoomC;
+    return [Math.round(Math.max(0, Math.min(1, bx)) * 1000),
+            Math.round(Math.max(0, Math.min(1, by)) * 1000)];
+  }
+
+  function deuxDoigts(){
+    var out = [];
+    for(var k in doigts){
+      if(doigts.hasOwnProperty(k)){ out.push(doigts[k]); if(out.length === 2) break; }
     }
+    return out;
+  }
+
+  function reperePince(){
+    var d = deuxDoigts();
+    if(d.length < 2){ pince = null; return; }
+    var r = croquis.getBoundingClientRect();
+    pince = {
+      z: zoomC, px: panXC, py: panYC,
+      fx: ((d[0][0] + d[1][0]) / 2 - r.left) / (r.width || 1),
+      fy: ((d[0][1] + d[1][1]) / 2 - r.top) / (r.height || 1),
+      ecart: Math.max(1, Math.hypot(d[0][0] - d[1][0], d[0][1] - d[1][1]))
+    };
+  }
+
+  function suivrePince(){
+    var d = deuxDoigts();
+    if(!pince || d.length < 2) return;
+    var r = croquis.getBoundingClientRect();
+    var fx = ((d[0][0] + d[1][0]) / 2 - r.left) / (r.width || 1);
+    var fy = ((d[0][1] + d[1][1]) / 2 - r.top) / (r.height || 1);
+    var ecart = Math.max(1, Math.hypot(d[0][0] - d[1][0], d[0][1] - d[1][1]));
+    zoomC = Math.max(1, Math.min(ZOOM_MAX, pince.z * ecart / pince.ecart));
+    /* LE POINT PINCE RESTE SOUS LES DOIGTS : sans ce recalage, zoomer
+       ramene le dessin vers le coin haut-gauche. */
+    var k = zoomC / pince.z;
+    panXC = fx - (pince.fx - pince.px) * k;
+    panYC = fy - (pince.fy - pince.py) * k;
+    bornerZoom();
+    if(Math.abs(zoomC - pince.z) > 0.05
+       || Math.abs(fx - pince.fx) * r.width > 12
+       || Math.abs(fy - pince.fy) * r.height > 12) pinceBouge = true;
+    demanderPeinture();
+  }
+
+  /* Le second doigt est arrive pendant un trait. */
+  function arreterTraitPourPince(){
+    var t = traitEnCours;
+    traitEnCours = null;
+    if(!t || traits[traits.length - 1] !== t) return;
+    var jeune = Date.now() - traitNeA < 350;
+    if(jeune || t.p.split(' ').length <= 3){
+      traits.pop();
+      peindreCroquis();
+    }
+    diffuserCroquis();
+  }
+
+  function brancherDoigt(f){
     function debut(ev){
       ev.preventDefault();
-      var p = pos(ev);
-      /* LE POT N'EST PAS UN TRACE : il agit a la touche et n'a pas de suite
-         de points. Meme format que celui que le maitre envoie et que cette
-         page sait deja rejouer (`floodFill`) — un point de depart et une
-         couleur, jamais une image. */
-      if(outilC === 'pot'){
+      if(ev.pointerType === 'mouse' && ev.button !== 0) return;
+      try { croquis.setPointerCapture(ev.pointerId); } catch(e){}
+      if(!doigts.hasOwnProperty(ev.pointerId)) nDoigts++;
+      doigts[ev.pointerId] = [ev.clientX, ev.clientY];
+      if(nDoigts === 1){
+        gestePince = false;
+        potEnAttente = null;
         traitEnCours = null;
-        traits.push({ t: 'f', c: couleurC, x: p[0], y: p[1] });
+        var p = versArdoise(ev.clientX, ev.clientY);
+        /* LE POT N'EST PAS UN TRACE : un point de depart et une couleur,
+           jamais une image — le format que le maitre envoie et que cette
+           page sait rejouer (`floodFill`). Verse au lever, voir plus haut. */
+        if(outilC === 'pot'){ potEnAttente = p; return; }
+        var gomme = outilC === 'gomme';
+        traitEnCours = { t: 's',
+                         w: gomme ? epaisseurC * GOMME_FACTEUR : epaisseurC,
+                         p: p[0] + ',' + p[1] };
+        /* `e` OU `c`, JAMAIS LES DEUX : c'est l'encodage que le maitre
+           attend (voir `encodeBoard`). Une gomme qui porterait une couleur
+           peindrait un trait sombre au lieu de creuser. */
+        if(gomme){ traitEnCours.e = 1; } else { traitEnCours.c = couleurC; }
+        traitNeA = Date.now();
+        traits.push(traitEnCours);
         peindreCroquis();
         diffuserCroquis();
         return;
       }
-      var gomme = outilC === 'gomme';
-      traitEnCours = { t: 's',
-                       w: gomme ? epaisseurC * GOMME_FACTEUR : epaisseurC,
-                       p: p[0] + ',' + p[1] };
-      /* `e` OU `c`, JAMAIS LES DEUX : c'est l'encodage que le maitre attend
-         (voir `encodeBoard`). Une gomme qui porterait une couleur peindrait
-         un trait sombre au lieu de creuser. */
-      if(gomme){ traitEnCours.e = 1; } else { traitEnCours.c = couleurC; }
-      traits.push(traitEnCours);
-      peindreCroquis();
-      diffuserCroquis();
+      if(!gestePince){
+        gestePince = true;
+        pinceDebut = Date.now();
+        pinceBouge = false;
+        potEnAttente = null;
+        arreterTraitPourPince();
+      }
+      reperePince();
     }
     function bouge(ev){
-      if(!traitEnCours) return;
+      if(!doigts.hasOwnProperty(ev.pointerId)) return;
       ev.preventDefault();
-      var p = pos(ev);
+      doigts[ev.pointerId] = [ev.clientX, ev.clientY];
+      if(gestePince){ if(nDoigts >= 2) suivrePince(); return; }
+      if(!traitEnCours) return;
+      var p = versArdoise(ev.clientX, ev.clientY);
       /* ON NE GARDE PAS TOUS LES POINTS. Un doigt en produit soixante par
          seconde ; a deux points par pixel le trait ne change pas d'aspect et
-         le message triple de taille. On saute ce qui n'a pas bouge. */
+         le message triple de taille. On saute ce qui n'a pas bouge — un
+         seuil plus fin quand on a zoome, sinon le zoom ne servirait a rien
+         pour les details. */
       var q = traitEnCours.p.split(' ');
       var d = q[q.length - 1].split(',');
-      if(Math.abs(p[0] - d[0]) + Math.abs(p[1] - d[1]) < 6) return;
+      var seuil = Math.max(1, Math.round(6 / zoomC));
+      if(Math.abs(p[0] - d[0]) + Math.abs(p[1] - d[1]) < seuil) return;
       traitEnCours.p += ' ' + p[0] + ',' + p[1];
       peindreCroquis();
       diffuserCroquis();
     }
-    /* LE DOIGT SE LEVE : on force le dernier envoi. Sans lui, la fin du
-       trait attend le prochain geste — et si c'etait le dernier, elle
-       n'arrive jamais. */
-    function fin(){ traitEnCours = null; diffuserCroquis(); }
-    finDoigt = fin;
+    /* UN DOIGT SE LEVE. Le dernier termine le geste et force le dernier
+       envoi : sans lui, la fin du trait attend le prochain geste — et si
+       c'etait le dernier, elle n'arrive jamais. */
+    function fin(ev){
+      if(!doigts.hasOwnProperty(ev.pointerId)) return;
+      delete doigts[ev.pointerId];
+      nDoigts = Math.max(0, nDoigts - 1);
+      if(nDoigts > 0){
+        if(gestePince && nDoigts >= 2) reperePince();
+        return;
+      }
+      var pot = potEnAttente;
+      potEnAttente = null;
+      traitEnCours = null;
+      pince = null;
+      if(gestePince){
+        /* DEUX DOIGTS TAPES DEUX FOIS : retour au cadre entier. */
+        var maintenant = Date.now();
+        if(!pinceBouge && maintenant - pinceDebut < 320){
+          if(maintenant - dernierTape2 < 450){
+            dernierTape2 = 0;
+            remettreZoom();
+            peindreCroquis();
+          } else {
+            dernierTape2 = maintenant;
+          }
+        } else {
+          dernierTape2 = 0;
+        }
+        gestePince = false;
+        return;
+      }
+      if(pot && ev.type === 'pointerup'){
+        traits.push({ t: 'f', c: couleurC, x: pot[0], y: pot[1] });
+        peindreCroquis();
+      }
+      diffuserCroquis();
+    }
+    doigts = {};
+    nDoigts = 0;
+    gestePince = false;
+    finDoigt = null;
 
-    croquis.addEventListener('touchstart', debut, { passive: false });
-    croquis.addEventListener('touchmove', bouge, { passive: false });
-    croquis.addEventListener('touchend', fin);
-    croquis.addEventListener('touchcancel', fin);
-    croquis.addEventListener('mousedown', debut);
-    croquis.addEventListener('mousemove', bouge);
-    window.addEventListener('mouseup', fin);
+    croquis.addEventListener('pointerdown', debut);
+    croquis.addEventListener('pointermove', bouge);
+    croquis.addEventListener('pointerup', fin);
+    croquis.addEventListener('pointercancel', fin);
+    /* Sans ceci, un appui long ouvre le menu « enregistrer l'image ». */
+    croquis.addEventListener('contextmenu', function(ev){ ev.preventDefault(); });
   }
 
   /* Une ardoise en lecture seule : le maillon qu'on doit interpreter.
@@ -2899,6 +3114,60 @@
   var croquisFaitN = 0;
   var croquisEssais = 0;
 
+  /* LE ZOOM REDESSINE, IL N'ETIRE PAS. Agrandir le calque deja peint
+     donnerait des traits flous, justement la ou l'on zoome pour etre precis.
+     Zoome, on repeint donc les traits a la bonne echelle, sur un second
+     calque (`croquisZ`), refait seulement quand la vue change.
+
+     LES REMPLISSAGES NE SE REJOUENT PAS ZOOMES : l'etalement ne verrait que
+     la partie visible, et une zone reliee par un bord hors de vue resterait
+     vide. Chacun est calcule sur l'ardoise entiere (le calque a l'echelle 1),
+     et on en garde le MASQUE — les pixels qu'il a changes — qu'on pose,
+     agrandi, a sa place dans l'ordre des traits. Seuls les bords d'un aplat
+     sont donc un peu doux au zoom ; les traits restent nets. */
+  var masquesC = [];        // indice de l'element -> canvas du remplissage
+  var croquisZ = null;
+  var croquisZCle = '';
+  var croquisZN = 0;
+  var croquisGen = 0;       // change quand le calque a l'echelle 1 repart de zero
+
+  /* Pose un remplissage sur le calque a l'echelle 1, et en garde le masque. */
+  function remplirEtRetenir(gf, it, c, i){
+    var w = croquisFait.width, h = croquisFait.height, avant, apres;
+    try { avant = gf.getImageData(0, 0, w, h); } catch(e){ avant = null; }
+    drawItem(gf, it, c, croquisFait);
+    if(!avant) return;
+    try { apres = gf.getImageData(0, 0, w, h); } catch(e){ return; }
+    var m = document.createElement('canvas');
+    m.width = w; m.height = h;
+    var gm = m.getContext('2d');
+    var img = gm.createImageData(w, h);
+    var a = avant.data, b = apres.data, o = img.data;
+    for(var k = 0; k < b.length; k += 4){
+      if(a[k] !== b[k] || a[k+1] !== b[k+1] || a[k+2] !== b[k+2]
+         || a[k+3] !== b[k+3]){
+        o[k] = b[k]; o[k+1] = b[k+1]; o[k+2] = b[k+2]; o[k+3] = b[k+3];
+      }
+    }
+    gm.putImageData(img, 0, 0);
+    masquesC[i] = m;
+  }
+
+  /* Le cadre du dessin tel que la vue zoomee le montre. */
+  function cadreZoom(w, h){
+    return { x: panXC * w, y: panYC * h, w: w * zoomC, h: h * zoomC };
+  }
+
+  function dessinerZoome(g, it, i, cz){
+    if(!it) return;
+    if(it.t === 'f'){
+      var m = masquesC[i];
+      if(m) g.drawImage(m, cz.x, cz.y, cz.w, cz.h);
+      return;
+    }
+    drawItem(g, it, cz, croquisZ);
+  }
+
   /* LE FOND DE L'ARDOISE DE CET INVITE : son theme a lui, un peu eclairci.
 
      C'etait le theme du MAITRE (le `fond` du formulaire) : on dessinait
@@ -2935,20 +3204,25 @@
     var r = boite.getBoundingClientRect();
     /* Pas encore mis en page (panneau qui s'ouvre) : on repassera — un
        nombre de fois BORNE, un panneau ferme n'ayant jamais de taille. */
-    if(r.width < 2 || r.height < 2){
+    if(r.width < 2){
       if(croquisEssais++ < 20) setTimeout(peindreCroquis, 60);
       return;
     }
     croquisEssais = 0;
-    /* LA ZONE A LES PROPORTIONS DU DESSIN, la plus grande qui tienne dans
-       la boite, centree. Le canevas la remplit exactement : le cadre du
-       dessin (`cadreCroquis`) est donc le canevas entier, sans marge. */
-    var zw = Math.min(r.width, r.height * ARDOISE);
+    /* LA ZONE PREND TOUTE LA LARGEUR, et la hauteur qui va avec ses
+       proportions. Plafond : 86 % de la hauteur visible, pour qu'un
+       telephone couche ne donne pas une ardoise plus haute que l'ecran.
+       La boite prend la hauteur de la zone : le panneau defile si les
+       boutons ne tiennent plus dessous — c'est le choix du joueur. */
+    var visible = (window.visualViewport && window.visualViewport.height)
+                  || window.innerHeight;
+    var zw = Math.min(r.width, Math.max(120, visible * 0.86) * ARDOISE);
     var zh = zw / ARDOISE;
+    boite.style.height = Math.round(zh) + 'px';
     zone.style.width = Math.round(zw) + 'px';
     zone.style.height = Math.round(zh) + 'px';
     zone.style.left = Math.round((r.width - zw) / 2) + 'px';
-    zone.style.top = Math.round((r.height - zh) / 2) + 'px';
+    zone.style.top = '0px';
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
     var w = Math.max(1, Math.round(zw * dpr));
     var h = Math.max(1, Math.round(zh * dpr));
@@ -2962,24 +3236,50 @@
     }
     var c = cadreCroquis();
     var gf = croquisFait.getContext('2d');
+    /* CE QUI EST FINI. Tout sauf le dernier element — et le dernier aussi
+       si c'est un remplissage : il ne bougera plus, et c'est sur ce calque
+       qu'il doit etre calcule pour qu'on en ait le masque. */
+    var n = traits.length;
+    var cible = (n && traits[n - 1].t === 'f') ? n : Math.max(0, n - 1);
     /* LE CALQUE A TROP DE CHOSES DESSUS : on repart de zero. C'est le cas de
        l'annulation et de l'effacement, et le seul ou l'on paie le prix fort
        — une fois, sur un geste explicite, jamais en plein trace. */
-    var cible = Math.max(0, traits.length - 1);
     if(croquisFaitN < 0 || croquisFaitN > cible){
       gf.clearRect(0, 0, w, h);
       croquisFaitN = 0;
+      masquesC = [];
+      croquisGen++;
     }
     for(; croquisFaitN < cible; croquisFaitN++){
-      drawItem(gf, traits[croquisFaitN], c, croquisFait);
+      if(traits[croquisFaitN].t === 'f'){
+        remplirEtRetenir(gf, traits[croquisFaitN], c, croquisFaitN);
+      } else {
+        drawItem(gf, traits[croquisFaitN], c, croquisFait);
+      }
     }
 
     var g = croquis.getContext('2d');
     g.clearRect(0, 0, w, h);
-    g.drawImage(croquisFait, 0, 0);
-    if(traits.length){
-      drawItem(g, traits[traits.length - 1], c, croquis);
+    if(!(zoomC > 1.001)){
+      g.drawImage(croquisFait, 0, 0);
+      if(cible < n) drawItem(g, traits[n - 1], c, croquis);
+      return;
     }
+    /* ZOOME : le calque redessine a l'echelle de la vue. */
+    var cz = cadreZoom(w, h);
+    var cle = [w, h, zoomC, panXC, panYC, croquisGen].join('|');
+    if(!croquisZ || croquisZCle !== cle || croquisZN > cible){
+      if(!croquisZ){ croquisZ = document.createElement('canvas'); }
+      croquisZ.width = w; croquisZ.height = h;
+      croquisZCle = cle;
+      croquisZN = 0;
+    }
+    var gz = croquisZ.getContext('2d');
+    for(; croquisZN < cible; croquisZN++){
+      dessinerZoome(gz, traits[croquisZN], croquisZN, cz);
+    }
+    g.drawImage(croquisZ, 0, 0);
+    if(cible < n) drawItem(g, traits[n - 1], cz, croquis);
     /* PLUS DE FILET DANS LE CANEVAS : le bord est celui de `.ardoise-zone`,
        dehors, et ne peut donc pas servir de mur a un remplissage. */
   }
@@ -3165,9 +3465,10 @@
     formActes = null;
     formActesSig = '';
 
-    if(f.sous) corpsF.appendChild(el('div','hint', f.sous));
+    /* `sous` et `consigne` : voir `#form.dessin .card.consigne`. */
+    if(f.sous) corpsF.appendChild(el('div','hint sous', f.sous));
     if(f.big){
-      var g = el('div','card');
+      var g = el('div', f.dessin ? 'card consigne' : 'card');
       if(f.bigLbl) g.appendChild(el('div','lbl', f.bigLbl));
       formBig = el('div','big', f.big);
       g.appendChild(formBig);
@@ -3212,6 +3513,11 @@
        hesiter au moment ou le chrono tourne. */
     if(f.dessin){
       batirCroquis(f, corpsF);
+      /* LE CHRONO PASSE SUR L'ARDOISE, en badge : voir `.ardoise-zone
+         .chrono`. Meme element, meme identifiant — `majChronoForm` le
+         trouve la ou il est. */
+      var zoneC = corpsF.querySelector('.ardoise-zone');
+      if(zoneC) zoneC.appendChild(chrono);
       if(traitsRepris.length){
         traits = traitsRepris;
         setTimeout(peindreCroquis, 0);
