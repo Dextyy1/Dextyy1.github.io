@@ -82,6 +82,14 @@
               flex:0 0 auto;display:flex;align-items:center;
               justify-content:center;text-align:center;font-size:19px;
               line-height:1}
+  /* LA FLECHE EST UN DESSIN, PAS UN CARACTERE. « ← » se posait sur la ligne
+     de base de la police, et chaque telephone a la sienne : la fleche
+     tombait un peu bas, un peu a gauche, jamais au meme endroit. Un trait
+     SVG dans une boite de 24 se centre au pixel partout, comme l'engrenage
+     des reglages. */
+  button.rond svg{width:20px;height:20px;display:block;flex:0 0 auto;
+                  fill:none;stroke:currentColor;stroke-width:2.4;
+                  stroke-linecap:round;stroke-linejoin:round}
   button.primary{background:var(--accent);color:#08102a;font-weight:800;
                  justify-content:center;text-align:center}
   .dot{width:9px;height:9px;border-radius:50%;background:#4FD68A;flex:0 0 auto}
@@ -223,7 +231,10 @@
   .carte .em{font-size:28px;flex:0 0 auto;line-height:1.1}
   .carte .nom{font-weight:800;font-size:16px;margin-bottom:3px}
   .carte .eff{font-size:13px;opacity:.7;line-height:1.35}
-  #tchat{position:fixed;left:0;right:0;top:0;height:var(--vv,100dvh);max-height:var(--vv,100dvh);z-index:30;display:flex;flex-direction:column;
+  /* `z-index:33` : AU-DESSUS DU FORMULAIRE (32). La messagerie s'ouvre
+     aussi depuis l'ecran de jeu (`bulleF`) ; en dessous, elle s'ouvrait
+     invisible, derriere la grille. */
+  #tchat{position:fixed;left:0;right:0;top:0;height:var(--vv,100dvh);max-height:var(--vv,100dvh);z-index:33;display:flex;flex-direction:column;
          background:rgba(6,12,32,.72);backdrop-filter:blur(10px);
          padding:calc(10px + env(safe-area-inset-top)) 14px
                  calc(10px + env(safe-area-inset-bottom))}
@@ -274,6 +285,47 @@
                 calc(14px + env(safe-area-inset-bottom))}
   #form .barre{display:flex;align-items:center;gap:12px;font-weight:800;
                margin-bottom:12px}
+  /* L'EN-TETE RESTE EN HAUT PENDANT QU'ON FAIT DEFILER LA GRILLE. Il
+     defilait avec elle : des la troisieme case, le retour et la messagerie
+     etaient sortis de l'ecran — le clavier fait defiler jusqu'au champ, donc
+     ça arrivait a chaque manche. Meme bouchage de la marge que pour le pied
+     (`::before`), meme fondu vers la grille. */
+  #form .barre{position:sticky;top:0;z-index:2;margin:0 -14px 4px;
+               padding:0 14px 8px;
+               background:linear-gradient(#060c20 calc(100% - 8px),
+                                          rgba(6,12,32,0))}
+  #form .barre::before{content:"";position:absolute;left:0;right:0;
+                       bottom:100%;height:calc(10px + env(safe-area-inset-top));
+                       background:#060c20}
+  /* LE TITRE PREND LA PLACE DU MILIEU, et la messagerie se range a droite,
+     de l'autre cote du retour — le meme agencement que l'ecran du maitre. */
+  #form .barre #titreF{flex:1 1 auto;min-width:0;overflow:hidden;
+                       text-overflow:ellipsis;white-space:nowrap}
+  #bulleF{position:relative;margin-left:auto}
+  #pastilleF{position:absolute;top:2px;right:2px;width:11px;height:11px;
+             border-radius:50%;background:#FF6B6B;
+             border:2px solid rgba(10,20,54,.8)}
+  /* « RENDRE MA COPIE » RESTE A L'ECRAN, colle en bas, la grille defilant
+     au-dessus — comme la feuille du maitre. Il etait tout en bas de six
+     cases : il fallait le chercher en faisant defiler, sous chrono, et c'est
+     precisement le geste qui compte au petit bac (« stop ! »).
+
+     `sticky` et pas `fixed` : le bouton reste dans le flux du panneau, dont
+     la hauteur suit deja la zone visible (`--vv`) — il se pose donc sur le
+     clavier quand celui-ci est ouvert, sans rien calculer. Le degrade du
+     haut masque les cases qui passent dessous sans couper net.
+     `scroll-padding-bottom` : quand le clavier monte, le navigateur fait
+     defiler jusqu'au champ actif — sans lui, il le posait SOUS le bouton. */
+  #form{scroll-padding-bottom:96px}
+  #form .piedF{position:sticky;bottom:0;z-index:1;margin:0 -14px;
+               padding:18px 14px 0;
+               background:linear-gradient(rgba(6,12,32,0),#060c20 18px)}
+  #form .piedF button{margin-bottom:0}
+  /* LE BOUTON S'ARRETE A LA MARGE BASSE DU PANNEAU, pas a son bord : les
+     cases defilaient dans cette bande, sous le bouton. On la bouche. */
+  #form .piedF::after{content:"";position:absolute;left:0;right:0;top:100%;
+                      height:calc(14px + env(safe-area-inset-bottom));
+                      background:#060c20}
   #form .chrono{font-size:34px;font-weight:900;text-align:center;margin:4px 0}
   canvas.croquis{width:100%;display:block;touch-action:none}
   /* LES COULEURS DEFILENT, SEULES SUR LEUR LIGNE, et c'est exactement le
@@ -306,7 +358,27 @@
      l'ardoise le temps d'un choix, et se referme d'elle-meme. Les pastilles
      restent des `.pot`, dans le panneau : c'est ce que les controles
      comptent. */
-  .ardoise-invite{position:relative}
+  /* LA ZONE OU L'ON DESSINE EST LA SEULE CHOSE COLOREE (retour du 26/09).
+
+     Le panneau entier de l'ardoise prenait la couleur du fond, et le
+     rectangle utile — aux proportions 3/4 — flottait au milieu, marque d'un
+     filet presque invisible : on ne voyait pas ou l'on pouvait dessiner.
+     Maintenant `.ardoise-invite` n'est qu'une boite transparente qui prend
+     toute la hauteur restante du panneau (`#form.dessin`), et
+     `.ardoise-zone`, posee au centre par `peindreCroquis`, a EXACTEMENT les
+     proportions du dessin : fond, bord et coins arrondis delimitent ce qui
+     se dessine, et rien d'autre. */
+  .ardoise-invite{position:relative;min-height:160px;margin-bottom:10px}
+  .ardoise-zone{position:absolute;left:0;top:0;overflow:hidden;
+                border-radius:16px;
+                box-shadow:0 0 0 2px rgba(255,255,255,.55),
+                           0 6px 22px rgba(0,0,0,.35)}
+  .ardoise-zone canvas.croquis{position:absolute;left:0;top:0;
+                               width:100%;height:100%}
+  #form.dessin #corpsF{flex:1 1 auto;min-height:0;display:flex;
+                       flex-direction:column}
+  #form.dessin #corpsF > *{flex:0 0 auto}
+  #form.dessin #corpsF > .ardoise-invite{flex:1 1 0}
   .palette-pop{position:absolute;left:8px;right:8px;bottom:8px;z-index:2;
                display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
                padding:12px;border-radius:16px;line-height:normal;
@@ -401,7 +473,7 @@
      refermerait toutes les deux secondes. -->
 <div id="param" hidden>
   <div class="barre">
-    <button id="retourP" class="rond">←</button>
+    <button id="retourP" class="rond" aria-label="Retour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <span>Reglages</span>
   </div>
   <div id="paramCorps"></div>
@@ -414,14 +486,19 @@
      est desormais structurelle. -->
 <div id="form" hidden>
   <div class="barre">
-    <button id="retourF" class="rond">←</button>
+    <button id="retourF" class="rond" aria-label="Retour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <span id="titreF">Ta reponse</span>
+    <!-- LA MESSAGERIE, EN HAUT A DROITE DE L'ECRAN DE JEU. La bulle flottante
+         vit sous ce panneau (qui couvre tout l'ecran pendant une manche) :
+         en jeu, on n'avait donc plus aucun moyen de lire ni d'ecrire. Voir
+         `bulleF` dans le script. -->
+    <button id="bulleF" class="rond" aria-label="Messages" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H10l-5 4v-4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/></svg><i id="pastilleF" hidden></i></button>
   </div>
   <div id="corpsF"></div>
 </div>
 <div id="jeu" hidden>
   <div class="barre">
-    <button id="retourC" class="rond">←</button>
+    <button id="retourC" class="rond" aria-label="Retour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <span>Tes cartes</span>
   </div>
   <div id="mainC"></div>
@@ -429,13 +506,13 @@
 
 <div id="tchat" hidden>
   <div class="barre">
-    <button id="retour" class="rond">←</button>
+    <button id="retour" class="rond" aria-label="Retour"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H5M11 5l-7 7 7 7"/></svg></button>
     <span>Messages</span>
   </div>
   <div id="lignes"></div>
   <div class="saisie">
     <input id="motxt" type="text" placeholder="Ton message" maxlength="200">
-    <button id="envoi" class="rond">↑</button>
+    <button id="envoi" class="rond" aria-label="Envoyer"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
   </div>
 </div>
 
@@ -601,7 +678,7 @@
 
      Le maitre diffuse l'empreinte qu'il attend (`pv`). Quand elle ne
      correspond pas, la page le dit elle-meme, en haut de l'ecran. */
-  var PAGE_VERSION = '70e87455';
+  var PAGE_VERSION = '8f66ff07';
 
   var HEARTBEAT_MS = 8000;
 
@@ -1834,12 +1911,30 @@
           fb.appendChild(el('div','hint','Envoi en cours… Le telephone '
             + 'principal n’a pas encore enregistre ta copie : elle repart '
             + 'toute seule.'));
-          var revoir = el('button', null, 'Revoir ma copie');
-          revoir.onclick = function(){ ouvrirForm(); };
-          fb.appendChild(revoir);
+          /* Une copie qu'on peut modifier a deja son bouton, juste dessous. */
+          if(!fCourant.modif){
+            var revoir = el('button', null, 'Revoir ma copie');
+            revoir.onclick = function(){ ouvrirForm(); };
+            fb.appendChild(revoir);
+          }
         } else {
           fb.appendChild(el('div','hint','Ta reponse est partie. '
             + 'On attend les autres.'));
+          /* CE QUE LE JEU PROPOSE A CELUI QUI A RENDU (`fini`) : au petit
+             bac, « terminer la manche pour tout le monde ». Meme format que
+             les gestes du mime, et meme principe — la page transmet, le
+             maitre juge (il refuse si la manche est deja close, ou si la
+             copie n'est pas enregistree). Seulement ICI, une fois la copie
+             arrivee au salon : pendant l'envoi, le maitre ne sait pas encore
+             qu'on a rendu, et refuserait. */
+          posActes(fb, fCourant.fini);
+        }
+        /* « MODIFIER MA COPIE », tant que le formulaire est encore propose,
+           c'est-a-dire tant que la manche court. Voir `modifierCopie`. */
+        if(fCourant.modif){
+          var modif = el('button', null, 'Modifier ma copie');
+          modif.onclick = modifierCopie;
+          fb.appendChild(modif);
         }
       } else {
         /* LA PORTE N'A PAS LE MEME LIBELLE QUE LE BOUTON D'ENVOI. Les deux
@@ -1856,6 +1951,10 @@
     // --- L'ARDOISE
     if(scene.k === 'draw'){
       var cadre = el('div','slate');
+      /* LE FOND DU THEME ECLAIRCI, comme l'ardoise du maitre de « Mime ou
+         Dessine » : sur le quasi-noir de `.slate`, le noir de sa palette
+         ne se voyait pas. Voir `fondArdoiseInvite`. */
+      cadre.style.background = fondArdoiseInvite();
       cadre.appendChild(boardEl());
       app.appendChild(cadre);
     }
@@ -2520,14 +2619,14 @@
 
     croquis = document.createElement('canvas');
     croquis.className = 'croquis';
-    var cadre = el('div','slate ardoise-invite');
-    /* LE FOND DE L'ARDOISE EST CELUI DU THEME DU MAITRE, s'il l'envoie.
-       C'etait un quasi-noir code en dur : le dessin se faisait sur du noir
-       ici, et se revoyait sur la couleur du theme partout ailleurs — sur le
-       telephone maitre, dans le GIF. Un trait sombre, lisible chez l'un,
-       disparaissait chez l'autre. */
-    if(f.fond) cadre.style.background = f.fond;
-    cadre.appendChild(croquis);
+    var cadre = el('div','ardoise-invite');
+    /* LE FOND EST CELUI DU THEME DE CET INVITE, un peu eclairci — voir
+       `fondArdoiseInvite`. Le `fond` du formulaire (le theme du maitre)
+       n'est plus pris : chacun dessine dans ses couleurs. */
+    var zone = el('div','ardoise-zone');
+    zone.style.background = fondArdoiseInvite();
+    zone.appendChild(croquis);
+    cadre.appendChild(zone);
     hote.appendChild(cadre);
 
     /* LA PALETTE, PAR-DESSUS L'ARDOISE ET DERRIERE UNE PASTILLE.
@@ -2555,7 +2654,7 @@
       };
       pop.appendChild(b);
     });
-    cadre.appendChild(pop);
+    zone.appendChild(pop);
 
     var barre = el('div','outils');
 
@@ -2798,18 +2897,63 @@
      deja peint. */
   var croquisFait = null;
   var croquisFaitN = 0;
+  var croquisEssais = 0;
+
+  /* LE FOND DE L'ARDOISE DE CET INVITE : son theme a lui, un peu eclairci.
+
+     C'etait le theme du MAITRE (le `fond` du formulaire) : on dessinait
+     chez soi sur une couleur qu'on n'avait pas choisie. Meme recette que
+     `ChainColors.ardoise` cote application — un point entre les deux
+     premieres couleurs du degrade, puis 22 % de blanc. L'eclaircissement
+     n'est pas decoratif : sur les themes les plus sombres (neon, minuit),
+     le « noir » de la palette disparaissait sur le fond ; eclairci, il se
+     voit, et le blanc et les couleurs vives ressortent toujours. Le maitre
+     repeint les traits sur SON ardoise, faite de la meme recette : ce qui
+     est lisible ici l'est la-bas. */
+  function fondArdoiseInvite(){
+    var st = getComputedStyle(document.documentElement);
+    function rgb(v, defaut){
+      var m = /^#?([0-9a-f]{6})$/i.exec((v || '').trim());
+      var n = parseInt(m ? m[1] : defaut, 16);
+      return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    }
+    var a = rgb(st.getPropertyValue('--bg1'), '0A1436');
+    var b = rgb(st.getPropertyValue('--bg2'), '16409B');
+    var out = [];
+    for(var i = 0; i < 3; i++){
+      var c = a[i] + (b[i] - a[i]) * 0.42;
+      out.push(Math.round(c + (255 - c) * 0.22));
+    }
+    return 'rgb(' + out.join(',') + ')';
+  }
 
   function peindreCroquis(){
     if(!croquis || !croquis.parentNode) return;
-    var r = croquis.parentNode.getBoundingClientRect();
-    if(r.width < 2) return;
+    var zone = croquis.parentNode;
+    var boite = zone.parentNode;
+    if(!boite || !document.body.contains(croquis)) return;
+    var r = boite.getBoundingClientRect();
+    /* Pas encore mis en page (panneau qui s'ouvre) : on repassera — un
+       nombre de fois BORNE, un panneau ferme n'ayant jamais de taille. */
+    if(r.width < 2 || r.height < 2){
+      if(croquisEssais++ < 20) setTimeout(peindreCroquis, 60);
+      return;
+    }
+    croquisEssais = 0;
+    /* LA ZONE A LES PROPORTIONS DU DESSIN, la plus grande qui tienne dans
+       la boite, centree. Le canevas la remplit exactement : le cadre du
+       dessin (`cadreCroquis`) est donc le canevas entier, sans marge. */
+    var zw = Math.min(r.width, r.height * ARDOISE);
+    var zh = zw / ARDOISE;
+    zone.style.width = Math.round(zw) + 'px';
+    zone.style.height = Math.round(zh) + 'px';
+    zone.style.left = Math.round((r.width - zw) / 2) + 'px';
+    zone.style.top = Math.round((r.height - zh) / 2) + 'px';
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
-    var w = Math.max(1, Math.round(r.width * dpr));
-    var h = Math.max(1, Math.round(Math.min(r.width / ARDOISE,
-                                            window.innerHeight * 0.5) * dpr));
+    var w = Math.max(1, Math.round(zw * dpr));
+    var h = Math.max(1, Math.round(zh * dpr));
     if(croquis.width !== w || croquis.height !== h){
       croquis.width = w; croquis.height = h;
-      croquis.style.height = Math.round(h / dpr) + 'px';
     }
     if(!croquisFait || croquisFait.width !== w || croquisFait.height !== h){
       croquisFait = document.createElement('canvas');
@@ -2836,16 +2980,8 @@
     if(traits.length){
       drawItem(g, traits[traits.length - 1], c, croquis);
     }
-    /* LE CADRE UTILE EN DERNIER, ET C'EST VOLONTAIRE.
-       Pose avant, il servirait de bord a un remplissage — ici seulement,
-       puisque les ecrans qui rejouent le dessin ne le tracent pas. On verrait
-       alors sur son propre telephone un aplat qui s'arrete au cadre, et sur
-       tous les autres un aplat qui deborde. */
-    g.save();
-    g.strokeStyle = 'rgba(255,255,255,.18)';
-    g.lineWidth = 1;
-    g.strokeRect(c.x, c.y, c.w, c.h);
-    g.restore();
+    /* PLUS DE FILET DANS LE CANEVAS : le bord est celui de `.ardoise-zone`,
+       dehors, et ne peut donc pas servir de mur a un remplissage. */
   }
 
   /* ------------------------------------------------------------------
@@ -2880,6 +3016,20 @@
   var brouillonEnvoye = '';
   var BROUILLON_ECART = 900;
 
+  /* LE NUMERO DE VERSION DE LA GRILLE (`r`), sur chaque brouillon et chaque
+     copie. Depuis qu'on peut MODIFIER une copie rendue, l'ordre d'arrivee ne
+     dit plus laquelle est la bonne : la boite d'envoi peut relivrer la
+     premiere copie apres la seconde, et les brouillons d'une copie rouverte
+     sont legitimes. Le maitre garde la plus haute (`_Copie.rev`). L'horloge
+     sert de base pour que le compte ne reparte pas en arriere apres un
+     rechargement de la page ; le `+ 1` le garde croissant a la milliseconde
+     pres. */
+  var formRev = 0;
+  function revSuivante(){
+    formRev = Math.max(formRev + 1, Date.now());
+    return formRev;
+  }
+
   /* La grille telle qu'elle partirait maintenant. */
   function grilleBrouillon(){
     var v = {};
@@ -2911,7 +3061,7 @@
     /* `send` ET NON `intent` : un brouillon n'attend aucune confirmation, et
        l'inscrire comme intention en attente ferait clignoter « le telephone
        principal n'a pas repondu » a chaque mot tape. */
-    send('act', { a: 'form', f: brouillonId, v: v, d: 1 });
+    send('act', { a: 'form', f: brouillonId, v: v, d: 1, r: revSuivante() });
   }
 
   function arreterBrouillon(){
@@ -3034,18 +3184,23 @@
        `#form.vue`. */
     var avecVue = !!(f.it && f.it.length && !f.dessin);
     panneauF.classList.toggle('vue', avecVue);
+    /* UNE ARDOISE A REMPLIR : elle prend toute la hauteur qui reste. Voir
+       `.ardoise-invite`. */
+    panneauF.classList.toggle('dessin', !!f.dessin);
     panneauF.classList.remove('clavier');
     vueCourante = null;
     if(f.it && f.it.length){
       var vu = document.createElement('canvas');
       vu.className = 'croquis';
       var cadreVu = el('div', avecVue ? 'slate vue' : 'slate');
-      /* Le fond du theme du maitre, comme sur son ardoise. */
-      if(f.fond) cadreVu.style.background = f.fond;
+      /* Le fond du theme DE CET INVITE, comme son ardoise a dessiner (voir
+         `fondArdoiseInvite`) — plus celui du maitre (`f.fond`). */
+      var fondVu = fondArdoiseInvite();
+      cadreVu.style.background = fondVu;
       cadreVu.appendChild(vu);
       corpsF.appendChild(cadreVu);
-      vueCourante = { cv: vu, items: f.it, fond: f.fond || null };
-      setTimeout(function(){ peindreVue(vu, f.it, f.fond || null); }, 0);
+      vueCourante = { cv: vu, items: f.it, fond: fondVu };
+      setTimeout(function(){ peindreVue(vu, f.it, fondVu); }, 0);
     }
     var chrono = el('div','chrono'); chrono.id = 'chronoF';
     corpsF.appendChild(chrono);
@@ -3172,6 +3327,10 @@
           v[ch.k] = (formChamps[ch.k] || '').trim();
         });
         msg.v = v;
+        /* NUMEROTEE comme les brouillons : une copie MODIFIEE doit l'emporter
+           sur la premiere, meme si celle-ci, renvoyee par la boite d'envoi,
+           arrive apres. Voir `revSuivante`. */
+        msg.r = revSuivante();
       }
       /* LE BROUILLON S'ARRETE AVANT L'ENVOI DEFINITIF, et pas apres : un
          brouillon parti ensuite arriverait derriere la copie rendue et
@@ -3188,7 +3347,40 @@
       fermerForm();
       render(1);
     };
-    corpsF.appendChild(b);
+    /* UNE GRILLE A REMPLIR GARDE SON BOUTON A L'ECRAN : voir `#form .piedF`.
+       Pas en mode `vue` (le dessin a interpreter) : le panneau n'y defile
+       pas, la saisie colle deja au clavier. Pas sur l'ardoise non plus, qui
+       a sa propre mise en page. */
+    if(!f.dessin && !avecVue && champs.length){
+      var pied = el('div','piedF');
+      pied.appendChild(b);
+      corpsF.appendChild(pied);
+    } else {
+      corpsF.appendChild(b);
+    }
+  }
+
+  /* « MODIFIER MA COPIE » : la grille rendue se rouvre, avec ses reponses.
+
+     Tant que la manche court, rendre n'est pas definitif — sur papier non
+     plus, on peut raturer tant que personne n'a crie « stop ». On oublie
+     donc qu'on a repondu, et le panneau se rebatit sur la meme grille :
+     `formChamps` a garde la saisie (meme formulaire, voir `majForm`). Le
+     maitre garde la DERNIERE version recue, grace a son numero (`r`).
+
+     Le brouillon repart armé, mais sur la grille telle qu'elle a ete rendue :
+     rouvrir pour relire, sans rien toucher, n'envoie rien — et ne fait donc
+     pas croire au maitre qu'on s'est remis a ecrire. */
+  function modifierCopie(){
+    var f = formActuel();
+    if(!f || !f.id || !f.modif || f.id !== formEnvoye) return;
+    formEnvoye = null;
+    formMsg = null;
+    formVu = null;
+    majForm();
+    if(brouillonId) brouillonEnvoye = JSON.stringify(grilleBrouillon());
+    ouvrirForm();
+    render(1);
   }
 
   /* ------------------------------------------------------------------
@@ -3277,6 +3469,16 @@
   var vus = 0;              // le plus grand identifiant deja affiche
   var lus = 0;              // ...et deja VU par l'utilisateur
   var ouvertTchat = false;
+  /* LA SECONDE PORTE DE LA MESSAGERIE, dans l'en-tete de l'ecran de jeu
+     (`#form`), qui couvre la bulle flottante. Meme fenetre, meme garde
+     (`ouvertTchat`), meme pastille : les deux se tiennent ensemble par
+     `pastilles`. */
+  var bulleF = document.getElementById('bulleF');
+  var pastilleF = document.getElementById('pastilleF');
+  function pastilles(nonLus){
+    pastille.hidden = !nonLus;
+    pastilleF.hidden = !nonLus;
+  }
 
   function majTchat(){
     var liste = (state && state.chat) ? state.chat : [];
@@ -3284,6 +3486,7 @@
        salon, elle n'est qu'un bouton qui encombre un coin de l'ecran. */
     var utile = !!state && !!(myClaim || (state.claims && state.claims[dev]));
     bulle.hidden = !utile;
+    bulleF.hidden = !utile;
     if(!utile){
       panneau.hidden = true;
       ouvertTchat = false;
@@ -3316,7 +3519,7 @@
       montrerApercu(liste[liste.length - 1]);
     }
     majAnnonce();
-    pastille.hidden = (vus <= lus);
+    pastilles(vus > lus);
     if(!liste.length && !lignes.querySelector('.vide')){
       lignes.appendChild(el('div','vide',
         'Rien pour l’instant. Ecris quelque chose.'));
@@ -3394,7 +3597,7 @@
     cacherApercu();
     ouvertTchat = true;
     panneau.hidden = false;
-    lus = vus; pastille.hidden = true;
+    lus = vus; pastilles(false);
     lignes.scrollTop = lignes.scrollHeight;
     /* LE BOUTON RETOUR DU TELEPHONE DOIT FERMER LA FENETRE, pas quitter la
        page. Une entree d'historique posee ici, retiree en refermant : c'est
@@ -3407,17 +3610,41 @@
     if(!ouvertTchat) return;
     ouvertTchat = false;
     panneau.hidden = true;
-    lus = vus; pastille.hidden = true;
-    if(!parHistorique){ try { history.back(); } catch(e){} }
+    lus = vus; pastilles(false);
+    if(!parHistorique){
+      /* LE RETOUR QU'ON PROVOQUE SOI-MEME NE DOIT RIEN FERMER D'AUTRE. La
+         messagerie peut desormais s'ouvrir PAR-DESSUS l'ecran de jeu : le
+         `popstate` de ce `history.back()` refermait alors aussi la grille
+         dessous, en plein chrono. */
+      retourTchat = Date.now();
+      try { history.back(); } catch(e){ retourTchat = 0; }
+    }
   }
+  var retourTchat = 0;
 
   bulle.onclick = ouvrirTchat;
+  bulleF.onclick = ouvrirTchat;
   document.getElementById('retour').onclick = function(){ fermerTchat(false); };
   window.addEventListener('popstate', function(){
     /* UNE SEULE ENTREE D'HISTORIQUE A LA FOIS : les trois fenetres en posent
        une en s'ouvrant, et le bouton retour du telephone doit refermer celle
        qui est ouverte — pas quitter la page. */
-    fermerTchat(true);
+    /* SAUF LA MESSAGERIE, qui peut se poser sur l'ecran de jeu : c'est alors
+       deux entrees, et un retour ne doit fermer QUE celle du dessus. Un
+       retour du telephone ferme la messagerie si elle est ouverte, et rien
+       d'autre ; celui que `fermerTchat` provoque ne ferme rien. La fenetre
+       d'une seconde borne le cas ou `history.back()` n'a rien a depiler (et
+       ne declenche donc aucun `popstate`) : le retour suivant, un vrai, ne
+       doit pas etre avale. */
+    if(retourTchat && Date.now() - retourTchat < 1000){
+      retourTchat = 0;
+      return;
+    }
+    retourTchat = 0;
+    if(ouvertTchat){
+      fermerTchat(true);
+      return;
+    }
     fermerJeu(true);
     fermerParam(true);
     fermerForm(true);
