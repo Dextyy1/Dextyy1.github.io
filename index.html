@@ -24,10 +24,36 @@
 <style>
   :root{--bg1:#0A1436;--bg2:#16409B;--bg3:#050B22;--accent:#6C9BFF;}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  body{margin:0;min-height:100vh;font:16px/1.45 -apple-system,BlinkMacSystemFont,
+  /* LE BLANC SOUS LA PAGE, ET POURQUOI IL N'Y EN A PLUS.
+
+     Le degrade vivait sur `body`, en `background-attachment:fixed`, et
+     `html` n'avait aucun fond. Sur telephone, `fixed` n'est pas tenu (iOS
+     l'ignore, Chrome Android le peint contre une fenetre qui change de
+     taille quand le clavier monte ou que la barre d'adresse se replie), et
+     tout ce que le degrade ne couvrait pas — sous le contenu quand le
+     clavier pousse la page, dans le rebond d'un defilement — montrait le
+     fond par defaut du navigateur : du blanc.
+
+     Trois gestes, chacun pour une cause :
+     - `html` porte une couleur PLEINE, la plus sombre du theme : c'est elle
+       qui remplit le canevas partout ou rien d'autre ne peint ;
+     - le degrade passe sur un calque fixe (`body::before`) haut de `100lvh`,
+       la PLUS GRANDE hauteur que la fenetre puisse prendre : il couvre
+       l'ecran barre d'adresse repliee comme depliee, et ne bouge plus ;
+     - `overscroll-behavior:none` coupe le rebond et le « tirer pour
+       recharger » qui decouvraient le dessous de la page — et qui, en
+       pleine manche, rechargeaient la page d'un geste de trop. */
+  html{background:var(--bg3);min-height:100%;overscroll-behavior:none}
+  body{margin:0;min-height:100vh;min-height:100dvh;
+       font:16px/1.45 -apple-system,BlinkMacSystemFont,
        "Segoe UI",Roboto,sans-serif;color:#fff;
-       background:linear-gradient(160deg,var(--bg1),var(--bg2) 55%,var(--bg3));
-       background-attachment:fixed;padding:22px 18px 40px}
+       background:none;overscroll-behavior:none;padding:22px 18px 40px}
+  /* `z-index:-1` sans contexte d'empilement sur `body` : le calque se pose
+     juste au-dessus du fond de `html` et sous tout le reste. `body` ne doit
+     donc JAMAIS reprendre de fond : il se peindrait par-dessus le degrade. */
+  body::before{content:"";position:fixed;left:0;right:0;top:0;
+       height:100vh;height:100lvh;z-index:-1;pointer-events:none;
+       background:linear-gradient(160deg,var(--bg1),var(--bg2) 55%,var(--bg3))}
   h1{font-size:26px;margin:6px 0 2px;font-weight:800;letter-spacing:.5px}
   .sub{opacity:.6;font-size:13px;margin-bottom:22px}
   .card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);
@@ -44,6 +70,18 @@
          border-radius:14px;padding:14px 16px;width:100%;text-align:left;
          margin-bottom:8px;display:flex;align-items:center;gap:10px}
   button:active{background:rgba(255,255,255,.20)}
+  /* LE BOUTON ROND EST ROND PARTOUT, pas panneau par panneau.
+
+     La regle `button` ci-dessus donne a tout bouton la pleine largeur. La
+     fleche de retour ne la corrigeait que dans les cartes (`#jeu .rond`) et
+     la messagerie (`#tchat .rond`) : dans les reglages et dans le
+     formulaire de reponse, rien ne la bornait, et « ← » devenait une barre
+     grise qui prenait tout le haut de l'ecran. Une regle par panneau, c'est
+     un panneau de plus a oublier : celle-ci vaut pour tous. */
+  button.rond{width:42px;height:42px;border-radius:50%;padding:0;margin:0;
+              flex:0 0 auto;display:flex;align-items:center;
+              justify-content:center;text-align:center;font-size:19px;
+              line-height:1}
   button.primary{background:var(--accent);color:#08102a;font-weight:800;
                  justify-content:center;text-align:center}
   .dot{width:9px;height:9px;border-radius:50%;background:#4FD68A;flex:0 0 auto}
@@ -208,9 +246,17 @@
      et il ne se rattachait visuellement a rien. */
   .titre{display:flex;align-items:center;justify-content:center;gap:10px}
   .titre h1{margin:0}
+  /* L'ICONE AU CENTRE DU ROND. Le bouton heritait de la regle `button` :
+     `display:flex` SANS `justify-content`, donc l'icone collee a gauche, et
+     une `margin-bottom` de 8px qui le decalait vers le haut par rapport au
+     titre. Le glyphe « ⚙ » ajoutait son propre decalage, variable selon la
+     police du telephone (texte chez l'un, emoji chez l'autre) : il est
+     remplace par un dessin, centre au pixel partout. */
   .titre button{width:34px;height:34px;border-radius:50%;border:0;
                 background:rgba(255,255,255,.10);color:#fff;font-size:16px;
-                line-height:1;padding:0;cursor:pointer;flex:0 0 auto}
+                line-height:1;padding:0;margin:0;cursor:pointer;flex:0 0 auto;
+                display:flex;align-items:center;justify-content:center}
+  .titre button svg{width:18px;height:18px;display:block;fill:currentColor}
   /* LE PANNEAU S'ARRETE AU-DESSUS DU CLAVIER.
 
      `inset:0` mesure la fenetre de MISE EN PAGE, qui ne retrecit pas quand
@@ -252,12 +298,53 @@
      outils de trace, et les melanger aux trois autres fait appuyer dessus. */
   .outil.fin{margin-left:auto}
   .epais .rond{display:block;border-radius:50%;background:currentColor}
+  /* LA PALETTE S'OUVRE PAR-DESSUS L'ARDOISE, derriere une pastille.
+
+     La rangee defilante prenait une ligne entiere sous l'ardoise, et sur un
+     telephone c'est la hauteur du dessin qu'elle mangeait. La pastille
+     montre la couleur courante ; la palette complete apparait sur le bas de
+     l'ardoise le temps d'un choix, et se referme d'elle-meme. Les pastilles
+     restent des `.pot`, dans le panneau : c'est ce que les controles
+     comptent. */
+  .ardoise-invite{position:relative}
+  .palette-pop{position:absolute;left:8px;right:8px;bottom:8px;z-index:2;
+               display:flex;flex-wrap:wrap;gap:10px;justify-content:center;
+               padding:12px;border-radius:16px;line-height:normal;
+               background:rgba(6,12,32,.92);
+               border:1px solid rgba(255,255,255,.16)}
+  .palette-pop[hidden]{display:none}
+  .palette-pop .pot{width:34px;height:34px;margin:0}
+  .outil.couleur i{display:block;width:20px;height:20px;border-radius:50%;
+                   border:2px solid rgba(255,255,255,.8)}
+  /* LE CONTEXTE RESTE A L'ECRAN PENDANT QU'ON ECRIT (telephone arabe).
+
+     Le dessin a interpreter avait une hauteur fixe, et le panneau defilait :
+     quand le clavier montait, le navigateur faisait defiler jusqu'au champ,
+     et le dessin — la seule chose qu'on etait venu regarder — sortait par le
+     haut. Ici le panneau ne defile plus : le dessin prend ce qui reste de
+     hauteur et RETRECIT quand le clavier monte, la saisie et son bouton
+     restent colles au clavier. `.clavier` replie les consignes le temps de
+     la frappe : c'est de la hauteur rendue au dessin. */
+  #form.vue{overflow:hidden}
+  #form.vue #corpsF{flex:1 1 auto;min-height:0;display:flex;
+                    flex-direction:column}
+  #form.vue #corpsF > *{flex:0 0 auto}
+  #form.vue #corpsF > .slate.vue{flex:1 1 auto;min-height:70px;
+                                  position:relative;margin-bottom:10px}
+  .slate.vue canvas{position:absolute;left:0;top:0;width:100%;height:100%}
+  #form.vue .chrono:empty{display:none}
+  #form.clavier .hint{display:none}
+  #form.vue .card{margin-bottom:8px}
+  html.formOuvert,html.formOuvert body{overflow:hidden}
   #form .chrono.court{color:#FF6B6B}
   /* LES DEUX GESTES DU JEU, COTE A COTE ET EN GRAND : on les vise sans
      regarder, un mot toutes les dix secondes, avec l'autre main occupee a
      dessiner. */
-  .actes{display:flex;gap:10px;margin:10px 0 4px}
-  .acte{flex:1 1 0;justify-content:center;text-align:center;font-weight:800;
+  /* PLUSIEURS RANGS SI BESOIN : en « chacun pour soi », il y a un bouton
+     « trouvé par… » par devineur, et huit boutons sur une ligne feraient
+     huit timbres-poste illisibles. Deux par rang, le reste suit. */
+  .actes{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 4px}
+  .acte{flex:1 1 0;min-width:calc(50% - 5px);justify-content:center;text-align:center;font-weight:800;
         margin:0;padding:16px 10px;border-radius:16px;
         background:rgba(255,255,255,.14)}
   .acte.ok{background:#4FD68A;color:#08210f}
@@ -268,6 +355,20 @@
                  calc(10px + env(safe-area-inset-bottom))}
   #param .barre{display:flex;align-items:center;gap:12px;font-weight:800;
                 margin-bottom:12px}
+  /* LES PANNEAUX PLEIN ECRAN SUIVENT LA ZONE VISIBLE, EN HAUT COMME EN BAS.
+
+     Leur hauteur suivait deja le clavier (`--vv`), pas leur position : ils
+     restaient accroches en haut de la fenetre de MISE EN PAGE. Or quand le
+     clavier monte, iOS — et Chrome quand il ne redimensionne que la zone
+     visible — fait glisser la zone visible vers le bas pour montrer le
+     champ. Le panneau finissait alors avant le bas de l'ecran, et ce qu'on
+     voyait dessous etait la page d'accueil, ou du blanc. `--vvt` (pose par
+     `suivreClavier`) est ce decalage.
+
+     `overscroll-behavior:contain` : arrive au bout de la liste, le doigt
+     faisait defiler la page DERRIERE le panneau. */
+  #jeu,#tchat,#form,#param{top:var(--vvt,0px);overscroll-behavior:contain}
+  #lignes,#mainC{overscroll-behavior:contain}
 </style></head><body>
 <div class="titre">
   <h1>Pivvy</h1>
@@ -280,7 +381,7 @@
      regarder. Ils vivent maintenant derriere un engrenage, dans un panneau
      pose HORS de `#app`, pour la meme raison que la messagerie : `#app` est
      reconstruit a chaque etat recu. -->
-  <button id="reglages">⚙</button>
+  <button id="reglages" aria-label="Reglages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg></button>
 </div>
 <div class="sub" id="sub">Connexion au salon…</div>
 <div id="app"></div>
@@ -500,7 +601,7 @@
 
      Le maitre diffuse l'empreinte qu'il attend (`pv`). Quand elle ne
      correspond pas, la page le dit elle-meme, en haut de l'ecran. */
-  var PAGE_VERSION = 'fdc23779';
+  var PAGE_VERSION = '70e87455';
 
   var HEARTBEAT_MS = 8000;
 
@@ -693,7 +794,16 @@
     return null;
   }
 
+  /* LES GESTES DE JEU ET LES MESSAGES PASSENT PAR LA BOITE D'ENVOI (voir
+     `poster`) : ils doivent ARRIVER, et un seul essai ne le garantit pas.
+     Tout le reste — bonjour, revendication, resynchronisation — part tel
+     quel : son effet se lit dans l'etat, et il a deja sa surveillance. */
   function send(type, data){
+    if(type === 'act' || type === 'chat'){ poster(type, data); return; }
+    emettre(type, data);
+  }
+
+  function emettre(type, data){
     if(!joined || !tuyau) return;
     /* LE SECRET VOYAGE AVEC CHAQUE INTENTION, comme le mot de passe et pour
        la meme raison : sur un canal de diffusion il n'y a pas de
@@ -704,6 +814,16 @@
   }
 
   function intent(type, data){
+    /* UN GESTE DE JEU N'EST PAS UNE INTENTION EN ATTENTE. Son effet ne se
+       lit pas dans l'etat du salon — `satisfied` le declarait donc
+       satisfait au premier etat recu, sans rien verifier. Pire, il ECRASAIT
+       l'intention en vol : un « trouve » appuye pendant une revendication
+       effaçait la surveillance de celle-ci. Sa garantie a lui, c'est
+       l'accuse du maitre (voir `poster`). */
+    if(type === 'act' || type === 'chat'){ send(type, data); return; }
+    /* « Ce n'est pas moi » : ce qui restait a envoyer etait signe du joueur
+       qu'on vient de lacher. */
+    if(type === 'leave') sortants = [];
     /* `hello` n'est PAS surveille : il ne change rien d'observable dans
        l'etat, donc l'attendre reviendrait a lever une alerte a chaque
        fois. Un mot de passe faux se decouvre au premier vrai geste. */
@@ -723,6 +843,107 @@
     if(pending.kind === 'leave') return !mine;
     return true;
   }
+
+  /* ------------------------------------------------------------------
+     LA BOITE D'ENVOI : CE QUI DOIT ARRIVER, ARRIVE.
+
+     L'etat va du maitre vers nous et se rediffuse entier toutes les deux
+     secondes : ce qui se perd revient au battement suivant. Les GESTES vont
+     dans l'autre sens et partaient UNE fois. D'ou la soiree du telephone
+     arabe : une copie rendue s'est perdue en route — une seconde de 4G, le
+     telephone maitre dont l'ecran s'etait eteint, un envoi parti pendant que
+     notre propre connexion se retablissait et donc jete sans un mot — la page
+     affichait « ta reponse est partie, on attend les autres », le maitre
+     attendait toujours ce joueur, et personne ne pouvait le savoir.
+
+     CHAQUE GESTE PORTE DONC UN NUMERO (`i`), et reste ici jusqu'a ce que
+     l'etat du maitre le cite dans `ack[notre appareil]`. Tant qu'il n'y est
+     pas, il repart toutes les deux secondes, et d'un coup a la reconnexion.
+     Le maitre reconnait un numero deja vu : il le re-accuse sans le rejouer
+     — une carte envoyee deux fois n'est jouee qu'une fois.
+
+     SEULEMENT SI LE MAITRE SAIT ACCUSER. Il l'annonce en publiant `ack`,
+     meme vide. Devant un maitre plus ancien, rien ne serait jamais accuse et
+     chaque renvoi serait rejoue : on envoie alors une fois, comme avant.
+
+     CE QUI SE REMPLACE NE S'EMPILE PAS. Le dessin en direct et le brouillon
+     du petit bac portent a chaque envoi l'etat COMPLET : seul le dernier
+     compte, et renvoyer un ancien apres un recent ferait reculer le dessin.
+     Une copie rendue efface les brouillons de la meme manche encore en vol,
+     pour la meme raison. */
+  var sortants = [];
+  var sortantSeq = 0;
+  /* Un prefixe tire a chaque chargement : le compteur repart de zero au
+     rechargement, et le maitre prendrait les nouveaux numeros pour des
+     doublons. */
+  var sortantTag = Math.random().toString(36).slice(2, 7);
+  var RESEND_MS = 2000;
+  /* Au-dela, on renonce : un geste vieux de dix minutes ne concerne plus la
+     partie en cours. Assez long pour un maitre qui a pose son telephone le
+     temps que tout le monde dessine. */
+  var OUTBOX_MAX_MS = 10 * 60 * 1000;
+  var OUTBOX_MAX = 40;
+
+  function accuse(){
+    return !!(state && state.ack && typeof state.ack === 'object');
+  }
+
+  function remplace(type, d){
+    if(type !== 'act' || !d) return null;
+    if(d.a === 'croquis') return 'croquis|' + d.f;
+    if(d.a === 'form' && d.d) return 'brouillon|' + d.f;
+    return null;
+  }
+
+  function poster(type, data){
+    var d = data || {};
+    if(!accuse()){ emettre(type, d); return; }
+    var cle = remplace(type, d);
+    var jeter = cle
+      || ((type === 'act' && d.a === 'form' && !d.d) ? 'brouillon|' + d.f : null);
+    if(jeter){
+      sortants = sortants.filter(function(o){ return o.cle !== jeter; });
+    }
+    var id = sortantTag + '.' + (++sortantSeq).toString(36);
+    var o = { id: id, type: type, data: Object.assign({}, d, { i: id }),
+              cle: cle, at: Date.now(), last: 0 };
+    sortants.push(o);
+    if(sortants.length > OUTBOX_MAX) sortants.shift();
+    pousser(o);
+  }
+
+  /* Deconnecte, on n'envoie pas : `last` reste a zero, et `relancer(true)`
+     le fera partir des que le tuyau revient. */
+  function pousser(o){
+    if(!joined || !tuyau) return;
+    o.last = Date.now();
+    emettre(o.type, o.data);
+  }
+
+  function relancer(tout){
+    var now = Date.now();
+    sortants = sortants.filter(function(o){ return now - o.at < OUTBOX_MAX_MS; });
+    sortants.forEach(function(o){
+      if(tout || now - o.last >= RESEND_MS) pousser(o);
+    });
+  }
+
+  function lireAccuses(st){
+    var liste = (st && st.ack) ? st.ack[dev] : null;
+    if(!liste || !liste.length || !sortants.length) return;
+    sortants = sortants.filter(function(o){ return liste.indexOf(o.id) < 0; });
+  }
+
+  /* LA COPIE DE CE FORMULAIRE EST-ELLE ENCORE EN ROUTE ? Pour l'ecran : « ta
+     reponse est partie » ne doit se dire qu'une fois le maitre l'a reçue. */
+  function copieEnVol(fid){
+    return sortants.some(function(o){
+      return o.type === 'act' && o.data.a === 'form' && !o.data.d
+          && o.data.f === fid;
+    });
+  }
+
+  setInterval(function(){ if(sortants.length) relancer(false); }, 500);
 
   // ------------------------------------------------------------ canal
 
@@ -756,6 +977,14 @@
   function ouvert(){
     joined = true; err = '';
     send('hello', {});
+    /* ET ON REDEMANDE LA SCENE : un invite qui revient apres une coupure a
+       pu rater le debut d'un tour, et le maitre ne rediffuse une scene que
+       quand elle change. Sans cette demande, il restait sur le formulaire
+       d'avant, deja rendu, pendant que le maitre l'attendait. */
+    askResync();
+    /* CE QUI ATTENDAIT LE TUYAU PART MAINTENANT, sans attendre la relance :
+       c'est justement pendant la coupure qu'on a appuye. */
+    relancer(true);
     startBeat();
     render(1);
   }
@@ -900,6 +1129,7 @@
   function onMessage(m){
     if(m.type === 'state'){
       state = m.data;
+      lireAccuses(state);
       /* ON NE FERME PAS L'ECRAN DU MOT DE PASSE SUR UN ETAT RECU.
          Le maitre rediffuse l'etat a TOUT LE CANAL toutes les deux
          secondes, mot de passe ou pas : le refermer ici detruisait le
@@ -931,6 +1161,7 @@
     } else if(m.type === 'bye'){
       state = null;
       pending = null;
+      sortants = [];
       stopBeat();
       err = 'La soiree est terminee.';
       resetScene();
@@ -1090,6 +1321,14 @@
     for(var k in scene){
       if(k === 'it' || k === 'priv') continue;
       out.push(k + '=' + JSON.stringify(scene[k]));
+    }
+    /* NOTRE PART, MAIS DESCELLEE : le mot et les boutons qu'elle porte. Sans
+       elle, un « passer » qui tombait dans la meme seconde que l'envoi
+       precedent ne changeait rien de public — le mot suivant et les boutons
+       rearmes attendaient alors le prochain battement du chrono. */
+    var mien = privee();
+    if(mien){
+      out.push('priv=' + JSON.stringify([mien.text, mien.label, mien.actes]));
     }
     /* Le nombre de traits entre quand meme dans la signature, mais seulement
        comme un COMPTE : il faut redessiner quand l'ardoise s'efface d'un
@@ -1584,8 +1823,24 @@
       var fb = el('div','card');
       fb.appendChild(el('div','lbl', fCourant.titre || 'A toi de jouer'));
       if(fCourant.id === formEnvoye){
-        fb.appendChild(el('div','hint','Ta reponse est partie. '
-          + 'On attend les autres.'));
+        /* « PARTIE » SEULEMENT QUAND C'EST VRAI. Un formulaire `ack` qui nous
+           est encore propose n'a PAS ete enregistre (voir `relancerCopie`) :
+           on le dit, la copie repart d'elle-meme, et on peut la rouvrir. Les
+           autres formulaires restent affiches pour tout le monde apres
+           l'envoi ; pour eux, la boite d'envoi dit si le salon l'a recue. */
+        var enRoute = fCourant.ack
+          || (typeof copieEnVol === 'function' && copieEnVol(fCourant.id));
+        if(enRoute){
+          fb.appendChild(el('div','hint','Envoi en cours… Le telephone '
+            + 'principal n’a pas encore enregistre ta copie : elle repart '
+            + 'toute seule.'));
+          var revoir = el('button', null, 'Revoir ma copie');
+          revoir.onclick = function(){ ouvrirForm(); };
+          fb.appendChild(revoir);
+        } else {
+          fb.appendChild(el('div','hint','Ta reponse est partie. '
+            + 'On attend les autres.'));
+        }
       } else {
         /* LA PORTE N'A PAS LE MEME LIBELLE QUE LE BOUTON D'ENVOI. Les deux
            portaient « rendre ma copie », l'un dans `#app` et l'autre dans le
@@ -2000,6 +2255,7 @@
   var formVu = null;        // l'identifiant du formulaire actuellement bati
   var formEnvoye = null;    // celui auquel on a deja repondu
   var formChamps = {};      // ce qui est saisi, pour survivre a un redessin
+  var formBatiId = null;    // le dernier formulaire bati, meme referme depuis
 
   document.getElementById('retourF').onclick = function(){ fermerForm(); };
 
@@ -2063,13 +2319,47 @@
       envoyerBrouillon();
       arreterBrouillon();
       formVu = f.id;
-      formChamps = {};
+      /* LE MEME FORMULAIRE QUI REVIENT garde ce qui etait tape : voir
+         `batirForm`. */
+      if(f.id !== formBatiId) formChamps = {};
       batirForm(f);
       if(f.auto) ouvrirForm();
     } else {
       majChronoForm(f);
       majWipeForm(f);
+      majActesForm(f);
     }
+  }
+
+  /* LE MOT ET LES BOUTONS SUIVENT LE MAITRE, SANS RECONSTRUIRE LE PANNEAU.
+
+     C'etait LE defaut de « trouvé » en dessin sur son telephone. Le panneau
+     garde le meme identifiant pendant tout le tour (voir `majWipeForm`) :
+     il n'etait donc bati qu'une fois, avec le PREMIER mot et les PREMIERS
+     boutons. Apres un « trouvé », le maitre comptait bien le point et tirait
+     le mot suivant — mais le panneau affichait toujours l'ancien mot, et le
+     bouton, desarme par l'appui, le restait jusqu'a la fin du tour. Pour
+     celui qui dessinait : rien ne s'etait passe, et son tour etait perdu.
+     Pire, meme rearme, le bouton aurait renvoye l'ancien numero de mot, que
+     le maitre rejette a juste titre.
+
+     On compare donc ce que le maitre envoie a ce qui est affiche, et on ne
+     remplace que ce qui a change : le mot, et la rangee de boutons. */
+  var formBig = null;       // l'element du mot, dans le panneau
+  var formActes = null;     // le conteneur des boutons, dans le panneau
+  var formActesSig = '';    // ce qu'ils disent, pour ne les refaire qu'au besoin
+
+  function majActesForm(f){
+    if(formBig && f.big !== undefined && f.big !== null
+       && formBig.textContent !== String(f.big)){
+      formBig.textContent = String(f.big);
+    }
+    if(!formActes) return;
+    var sig = JSON.stringify(f.actes || []);
+    if(sig === formActesSig) return;
+    formActesSig = sig;
+    formActes.innerHTML = '';
+    posActes(formActes, f.actes);
   }
 
   /* LE CHRONO SE MET A JOUR SANS RECONSTRUIRE LE FORMULAIRE. C'est tout
@@ -2230,16 +2520,26 @@
 
     croquis = document.createElement('canvas');
     croquis.className = 'croquis';
-    var cadre = el('div','slate');
+    var cadre = el('div','slate ardoise-invite');
+    /* LE FOND DE L'ARDOISE EST CELUI DU THEME DU MAITRE, s'il l'envoie.
+       C'etait un quasi-noir code en dur : le dessin se faisait sur du noir
+       ici, et se revoyait sur la couleur du theme partout ailleurs — sur le
+       telephone maitre, dans le GIF. Un trait sombre, lisible chez l'un,
+       disparaissait chez l'autre. */
+    if(f.fond) cadre.style.background = f.fond;
     cadre.appendChild(croquis);
     hote.appendChild(cadre);
 
-    /* DEUX RANGEES, ET C'EST LA MEME RAISON QUE COTE APPLICATION : une seule
-       rangee de onze couleurs plus cinq outils deborde de l'ecran, et ce qui
-       depasse n'est pas seulement invisible — c'est intouchable. Les
-       couleurs defilent donc horizontalement, seules sur leur ligne, et les
-       outils ont la leur. */
-    var rangCouleurs = el('div','couleurs');
+    /* LA PALETTE, PAR-DESSUS L'ARDOISE ET DERRIERE UNE PASTILLE.
+
+       Elle defilait sur sa propre rangee, sous l'ardoise : une ligne entiere
+       prise au dessin, pour un choix qu'on fait trois fois par tour. La
+       pastille, dans la rangee des outils, montre la couleur courante ; la
+       palette complete s'ouvre sur le bas de l'ardoise et se referme des
+       qu'on a choisi. Le doigt qui la referme sans choisir ne trace rien :
+       elle est posee AU-DESSUS du canevas, qui ne recoit pas la touche. */
+    var pop = el('div','palette-pop');
+    pop.hidden = true;
     PALETTE.forEach(function(c){
       var b = document.createElement('button');
       b.className = 'pot';
@@ -2250,13 +2550,20 @@
         /* CHOISIR UNE COULEUR SORT DE LA GOMME : personne ne choisit une
            couleur pour effacer. Meme regle que sur le telephone maitre. */
         if(outilC === 'gomme') outilC = 'crayon';
+        pop.hidden = true;
         majPots();
       };
-      rangCouleurs.appendChild(b);
+      pop.appendChild(b);
     });
-    hote.appendChild(rangCouleurs);
+    cadre.appendChild(pop);
 
     var barre = el('div','outils');
+
+    var pastilleC = el('button','outil couleur');
+    pastilleC.title = 'Couleurs';
+    pastilleC.appendChild(el('i'));
+    pastilleC.onclick = function(){ pop.hidden = !pop.hidden; };
+    barre.appendChild(pastilleC);
 
     function outil(cle, texte, titre){
       var b = el('button','outil', texte);
@@ -2309,6 +2616,9 @@
   }
 
   function majPots(){
+    /* La pastille qui ouvre la palette porte la couleur courante. */
+    var pastilleC = document.querySelector('#form .outil.couleur i');
+    if(pastilleC) pastilleC.style.background = couleurC;
     var pots = document.querySelectorAll('#form .pot');
     for(var i = 0; i < pots.length; i++){
       pots[i].className =
@@ -2408,24 +2718,70 @@
     window.addEventListener('mouseup', fin);
   }
 
-  /* Une ardoise en lecture seule : le maillon qu'on doit interpreter. */
-  function peindreVue(cv, items){
+  /* Une ardoise en lecture seule : le maillon qu'on doit interpreter.
+
+     DEUX TAILLES. Dans un formulaire ordinaire, elle prend la largeur et la
+     hauteur qui va avec. Dans un formulaire a saisie (telephone arabe, voir
+     `#form.vue`), c'est sa BOITE qui decide : elle prend la hauteur que le
+     clavier laisse, et le dessin s'y inscrit, plus petit mais entier. */
+  var vueCourante = null;
+
+  function peindreVue(cv, items, fond){
     if(!cv.parentNode) return;
-    var r = cv.parentNode.getBoundingClientRect();
-    if(r.width < 2){ setTimeout(function(){ peindreVue(cv, items); }, 60); return; }
+    /* UNE VUE RETIREE DU DOCUMENT NE SE REPEINT PLUS : sans ce test, l'attente
+       ci-dessous tournait pour toujours sur un canevas mort. */
+    if(!document.body.contains(cv)) return;
+    var boite = cv.parentNode;
+    var r = boite.getBoundingClientRect();
+    if(r.width < 2){ setTimeout(function(){ peindreVue(cv, items, fond); }, 60); return; }
+    var souple = /(^| )vue( |$)/.test(boite.className);
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var hCss = souple ? Math.max(40, r.height)
+                      : Math.min(r.width / ARDOISE, window.innerHeight * 0.45);
     var w = Math.max(1, Math.round(r.width * dpr));
-    var h = Math.max(1, Math.round(Math.min(r.width / ARDOISE,
-                                            window.innerHeight * 0.45) * dpr));
+    var h = Math.max(1, Math.round(hCss * dpr));
     cv.width = w; cv.height = h;
-    cv.style.height = Math.round(h / dpr) + 'px';
+    if(!souple) cv.style.height = Math.round(h / dpr) + 'px';
     var g = cv.getContext('2d');
     g.clearRect(0, 0, w, h);
     var c = frameFor(w, h, ARDOISE);
+    /* LES MARGES AUTOUR DU CADRE SONT PEINTES, et c'est un mur : un pot de
+       peinture rejoue ici s'etale sur ce qui est TRANSPARENT et qui touche.
+       Dans une boite large et basse (clavier ouvert), l'aplat d'un ciel
+       debordait sinon sur les deux cotes du dessin. De la couleur du fond,
+       le mur ne se voit pas. */
+    if(fond){
+      g.fillStyle = fond;
+      g.fillRect(0, 0, w, c.y);
+      g.fillRect(0, c.y + c.h, w, h - c.y - c.h);
+      g.fillRect(0, 0, c.x, h);
+      g.fillRect(c.x + c.w, 0, w - c.x - c.w, h);
+    }
     for(var i = 0; i < items.length; i++){
       drawItem(g, items[i], c, cv);
     }
+    if(souple){
+      g.save();
+      g.strokeStyle = 'rgba(255,255,255,.18)';
+      g.lineWidth = 1;
+      g.strokeRect(c.x + 0.5, c.y + 0.5, c.w - 1, c.h - 1);
+      g.restore();
+    }
   }
+
+  /* LE CLAVIER CHANGE LA HAUTEUR VISIBLE : la vue suit. `resize` sur la
+     fenetre ne part pas toujours (Chrome Android ne redimensionne que la
+     zone visible), d'ou `visualViewport`. */
+  function repeindreVue(){
+    if(!vueCourante || panneauF.hidden) return;
+    peindreVue(vueCourante.cv, vueCourante.items, vueCourante.fond);
+  }
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){
+      setTimeout(repeindreVue, 30);
+    });
+  }
+  window.addEventListener('resize', repeindreVue);
 
   /* LE CALQUE DEJA PEINT, et pourquoi il a fallu en passer par la.
 
@@ -2588,6 +2944,8 @@
      mots. Le maitre s'en garde aussi de son cote — le message porte le
      numero du mot — mais un bouton qui reste vif apres un appui donne
      surtout l'impression que rien ne s'est passe. */
+  var ACTE_REARME = 4000;
+
   function posActes(hote, liste){
     if(!liste || !liste.length) return;
     var rang = el('div','actes');
@@ -2603,6 +2961,18 @@
           b.disabled = true;
           b.className = 'acte off';
           intent('act', a.msg);
+          /* ET IL SE REARME S'IL NE SE PASSE RIEN. Normalement le maitre
+             repond en moins d'une seconde par une scene neuve, qui remplace
+             ces boutons (voir `majActesForm`). Mais un paquet perdu en 4G,
+             ou un geste que le maitre a refuse, laissait le bouton eteint
+             pour tout le reste du tour : le joueur n'avait plus aucun moyen
+             de valider un mot. Rejouer le meme message est sans danger — il
+             porte le numero du mot, et le maitre ne le compte qu'une fois. */
+          setTimeout(function(){
+            if(!document.body.contains(b)) return;
+            b.disabled = false;
+            b.className = a.ok ? 'acte ok' : 'acte';
+          }, ACTE_REARME);
         };
       }
       rang.appendChild(b);
@@ -2611,6 +2981,16 @@
   }
 
   function batirForm(f){
+    /* LE MEME FORMULAIRE QUI REVIENT GARDE SON DESSIN.
+
+       Quand le maitre sort du jeu, meme une minute, la scene tombe et le
+       panneau se ferme ; quand il revient, le meme formulaire (meme
+       identifiant de tour) est republie. Le dessin en cours etait perdu :
+       le panneau se rebatissait sur une ardoise vide. Les traits sont encore
+       en memoire a ce moment-la — on les reprend. (La saisie, elle, est
+       gardee par `majForm`.) */
+    var traitsRepris = (f.id === formBatiId && f.dessin) ? traits : [];
+    formBatiId = f.id;
     /* ON LACHE L'ARDOISE PRECEDENTE. `innerHTML = ''` retire le canvas du
        document mais pas l'ecouteur de redimensionnement qu'on lui a attache
        sur `window` : sans ce retrait, chaque manche en ajoutait un, et au
@@ -2631,12 +3011,16 @@
     }
     corpsF.innerHTML = '';
     titreF.textContent = f.titre || 'Ta reponse';
+    formBig = null;
+    formActes = null;
+    formActesSig = '';
 
     if(f.sous) corpsF.appendChild(el('div','hint', f.sous));
     if(f.big){
       var g = el('div','card');
       if(f.bigLbl) g.appendChild(el('div','lbl', f.bigLbl));
-      g.appendChild(el('div','big', f.big));
+      formBig = el('div','big', f.big);
+      g.appendChild(formBig);
       corpsF.appendChild(g);
     }
 
@@ -2645,13 +3029,23 @@
        ecrit. Le meme rendu que l'ardoise du salon, avec le meme cadre :
        c'est ce qui garantit qu'on voit exactement ce que l'autre a trace, et
        pas une version etiree. */
+    /* UN FORMULAIRE A SAISIE QUI MONTRE UN DESSIN (telephone arabe) : le
+       dessin prend la hauteur qui reste, et la garde clavier ouvert. Voir
+       `#form.vue`. */
+    var avecVue = !!(f.it && f.it.length && !f.dessin);
+    panneauF.classList.toggle('vue', avecVue);
+    panneauF.classList.remove('clavier');
+    vueCourante = null;
     if(f.it && f.it.length){
       var vu = document.createElement('canvas');
       vu.className = 'croquis';
-      var cadreVu = el('div','slate');
+      var cadreVu = el('div', avecVue ? 'slate vue' : 'slate');
+      /* Le fond du theme du maitre, comme sur son ardoise. */
+      if(f.fond) cadreVu.style.background = f.fond;
       cadreVu.appendChild(vu);
       corpsF.appendChild(cadreVu);
-      setTimeout(function(){ peindreVue(vu, f.it); }, 0);
+      vueCourante = { cv: vu, items: f.it, fond: f.fond || null };
+      setTimeout(function(){ peindreVue(vu, f.it, f.fond || null); }, 0);
     }
     var chrono = el('div','chrono'); chrono.id = 'chronoF';
     corpsF.appendChild(chrono);
@@ -2663,6 +3057,10 @@
        hesiter au moment ou le chrono tourne. */
     if(f.dessin){
       batirCroquis(f, corpsF);
+      if(traitsRepris.length){
+        traits = traitsRepris;
+        setTimeout(peindreCroquis, 0);
+      }
     }
 
     /* LE DIRECT S'ARME ICI, une fois l'ardoise en place, et se desarme pour
@@ -2679,6 +3077,13 @@
     brouillonChamps = champs;
     brouillonId = (!f.dessin && f.brouillon && champs.length) ? f.id : null;
     brouillonEnvoye = '';
+
+    /* « ENTREE » REND LA COPIE quand il n'y a qu'une case a remplir et pas
+       de brouillon : c'est la touche que le clavier affiche en bas a droite,
+       et c'est le geste qu'on fait naturellement apres une phrase. Avec
+       plusieurs cases (le petit bac), elle referme seulement le clavier. */
+    var boutonEnvoi = null;
+    var entreeEnvoie = !brouillonId && champs.length === 1;
 
     champs.forEach(function(ch){
       var c = el('div','card');
@@ -2700,10 +3105,20 @@
       /* ENTREE VALIDE, ELLE NE VA PAS A LA LIGNE. Un retour a la ligne dans
          une reponse ne veut rien dire, et le clavier des telephones affiche
          « entree » la ou on attend « suivant ». */
+      i.setAttribute('enterkeyhint', entreeEnvoie ? 'send' : 'done');
       i.onkeydown = function(ev){
-        if(ev.key === 'Enter'){ ev.preventDefault(); i.blur(); }
+        if(ev.key !== 'Enter' || ev.isComposing) return;
+        ev.preventDefault();
+        if(entreeEnvoie && boutonEnvoi){ boutonEnvoi.click(); return; }
+        i.blur();
       };
-      i.onblur = function(){ lastBlur = Date.now(); envoyerBrouillon(); };
+      /* CLAVIER OUVERT, LES CONSIGNES SE REPLIENT : voir `#form.clavier`. */
+      i.onfocus = function(){ panneauF.classList.add('clavier'); };
+      i.onblur = function(){
+        lastBlur = Date.now();
+        panneauF.classList.remove('clavier');
+        envoyerBrouillon();
+      };
       c.appendChild(i);
       corpsF.appendChild(c);
       setTimeout(function(){ autoHaut(i); }, 0);
@@ -2723,7 +3138,10 @@
          D'ACCUEIL : pendant tout le tour, celui qui dessine est dans ce
          panneau. Les chercher ailleurs coutait un aller-retour a chaque
          mot, sous chrono. */
-      posActes(corpsF, f.actes);
+      formActes = el('div');
+      corpsF.appendChild(formActes);
+      posActes(formActes, f.actes);
+      formActesSig = JSON.stringify(f.actes || []);
       return;
     }
 
@@ -2739,6 +3157,7 @@
     }
 
     var b = el('button','primary', f.btn || 'Envoyer');
+    boutonEnvoi = b;
     b.onclick = function(){
       var msg = { a: 'form', f: f.id };
       if(f.dessin){
@@ -2760,6 +3179,11 @@
          s'en garde aussi de son cote, mais il vaut mieux ne pas l'envoyer. */
       arreterBrouillon();
       formEnvoye = f.id;
+      /* ON GARDE LA COPIE : tant que le maitre ne l'a pas enregistree, elle
+         repart (voir `relancerCopie`). */
+      formMsg = msg;
+      formEnvoyeAt = Date.now();
+      panneauF.classList.remove('clavier');
       intent('act', msg);
       fermerForm();
       render(1);
@@ -2767,15 +3191,65 @@
     corpsF.appendChild(b);
   }
 
+  /* ------------------------------------------------------------------
+     LA COPIE RENDUE N'EST « RENDUE » QUE QUAND LE MAITRE L'A ENREGISTREE.
+
+     C'est la panne d'une vraie partie de telephone arabe : un invite rend
+     son dessin, sa page affiche « ta reponse est partie, on attend les
+     autres » — mais la copie n'a jamais ete enregistree, et le maitre
+     attend ce joueur pour toujours. La page se croyait quitte au moment du
+     clic, avant toute livraison.
+
+     La boite d'envoi (`poster`) garantit que le message ARRIVE au salon.
+     Elle ne peut pas garantir que le JEU l'a pris : le maitre etait peut-etre
+     sorti de l'ecran du jeu (personne n'ecoutait), ou la copie visait un
+     tour qu'il venait de quitter. Un formulaire qui porte `ack` promet donc
+     davantage : le maitre le RETIRE des qu'il a enregistre la copie. Tant
+     qu'il nous est encore propose, rien n'est enregistre — et, une fois la
+     boite d'envoi vide, on renvoie, et on redemande la scene (celle qui nous
+     l'aurait retire a pu se perdre).
+     ------------------------------------------------------------------ */
+  var formMsg = null;
+  var formEnvoyeAt = 0;
+  var RENVOI_COPIE_MS = 4000;
+
+  function copieEnAttente(f){
+    return !!(f && f.ack && f.id === formEnvoye && formMsg);
+  }
+
+  function relancerCopie(){
+    if(!joined) return;
+    var f = formActuel();
+    if(!copieEnAttente(f)) return;
+    /* ENCORE DANS LA BOITE D'ENVOI : elle s'en occupe. On ne compte le delai
+       qu'a partir du moment ou le salon l'a recue. */
+    if(typeof copieEnVol === 'function' && copieEnVol(f.id)){
+      formEnvoyeAt = Date.now();
+      return;
+    }
+    if(Date.now() - formEnvoyeAt < RENVOI_COPIE_MS) return;
+    formEnvoyeAt = Date.now();
+    send('act', formMsg);
+    askResync();
+  }
+  setInterval(relancerCopie, 1000);
+
   function ouvrirForm(){
     if(!panneauF.hidden) return;
     try{ history.pushState({ pivvy: 'form' }, ''); }catch(e){}
     panneauF.hidden = false;
+    /* LA PAGE DERRIERE NE DEFILE PLUS pendant qu'un panneau plein ecran est
+       ouvert : le clavier la faisait glisser sous lui, et c'est elle qu'on
+       voyait par en dessous. */
+    document.documentElement.classList.add('formOuvert');
+    setTimeout(repeindreVue, 0);
   }
 
   function fermerForm(viaRetour){
     var etait = !panneauF.hidden;
     panneauF.hidden = true;
+    document.documentElement.classList.remove('formOuvert');
+    panneauF.classList.remove('clavier');
     if(etait && !viaRetour){
       try{ history.back(); }catch(e){}
     }
@@ -2838,7 +3312,7 @@
     }
     /* LE DERNIER MESSAGE SE MONTRE TOUT SEUL, si la fenetre est fermee.
        Ouverte, il est deja lisible en grand juste derriere. */
-    if(neuf && !ouvertTchat && liste.length){
+    if(neuf && !ouvertTchat && liste.length && !estDeMoi(liste[liste.length - 1])){
       montrerApercu(liste[liste.length - 1]);
     }
     majAnnonce();
@@ -2894,7 +3368,27 @@
     setTimeout(function(){ if(apercu.className !== 'vu') apercu.hidden = true; }, 240);
   }
 
+  /* SON PROPRE MESSAGE NE S'ANNONCE PAS. L'echo de ce qu'on vient d'ecrire
+     revient avec l'etat, jusqu'a deux secondes plus tard sur le relais : si
+     la fenetre a ete refermee entre-temps, le bandeau montrait a l'invite sa
+     propre phrase, comme si quelqu'un d'autre venait de lui ecrire. Le nom
+     est celui que le MAITRE attache a notre appareil, donc c'est lui qu'on
+     compare. */
+  function estDeMoi(l){
+    var id = myClaim || (state && state.claims && state.claims[dev]);
+    var ps = (state && state.players) || [];
+    for(var k = 0; k < ps.length; k++){
+      if(ps[k] && ps[k].id === id) return !!l && l.w === ps[k].name;
+    }
+    return false;
+  }
+
   function ouvrirTchat(){
+    /* UNE SEULE FENETRE. Deux appuis rapides sur la bulle posaient deux
+       entrees d'historique pour un seul panneau : le retour du telephone
+       devait ensuite etre presse deux fois, et le premier semblait ne rien
+       faire. */
+    if(ouvertTchat) return;
     /* On ouvre : l'aperçu n'a plus de raison d'etre, la conversation entiere
        arrive par-dessus. */
     cacherApercu();
@@ -3260,6 +3754,11 @@
     peindre: function(){ paintScene(); },
     HEARTBEAT_MS: HEARTBEAT_MS,
     PENDING_MS: PENDING_MS,
+    /* La boite d'envoi, pour verifier qu'un geste repart tant qu'il n'est pas
+       accuse, et plus apres. */
+    sortants: function(){ return sortants.map(function(o){ return o.id; }); },
+    copieEnVol: copieEnVol,
+    geste: function(d){ send('act', d); },
     /* Efface ce que la page a retenu de cet appareil. Sert aux essais, qui
        doivent pouvoir repartir d'un invite qui n'a jamais rien choisi. */
     oublier: function(){ S.removeItem(claimKey); S.removeItem(passKey); }
@@ -3295,8 +3794,13 @@
     var vv = window.visualViewport;
     if(!vv) return;
     function maj(){
-      document.documentElement.style.setProperty('--vv',
-        Math.round(vv.height) + 'px');
+      var r = document.documentElement.style;
+      r.setProperty('--vv', Math.round(vv.height) + 'px');
+      /* LE DECALAGE DE LA ZONE VISIBLE, pas seulement sa hauteur : voir
+         `--vvt` dans la feuille de style. Jamais negatif — le rebond d'iOS
+         en donne un instant, et un panneau remonte d'autant laisserait
+         passer le dessous. */
+      r.setProperty('--vvt', Math.max(0, Math.round(vv.offsetTop)) + 'px');
     }
     vv.addEventListener('resize', maj);
     vv.addEventListener('scroll', maj);
@@ -3319,6 +3823,11 @@
     if(!joined) return;
     send('hello', {});
     reclaim();
+    askResync();
+    /* APRES la re-revendication : un geste arrive avant elle, chez un maitre
+       qui nous a oublies, n'aurait pas de joueur — il ne serait pas accuse
+       et repartirait, mais autant lui eviter le detour. */
+    relancer(true);
   }
   document.addEventListener('visibilitychange', function(){
     if(document.visibilityState === 'visible') wake();
